@@ -1,0 +1,2302 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>VOID RUNNER — 우주여행 게임</title>
+<style>
+  :root{
+    --bg-deep: #060814;
+    --bg-panel: #0b0f1e;
+    --line: #223054;
+    --plasma: #ff7a45;
+    --plasma-dim: #b8471f;
+    --ion: #4de3d1;
+    --ion-dim: #1f7a70;
+    --text: #e7ecf7;
+    --text-dim: #7f8bad;
+    --danger: #ff4d6d;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color: transparent; }
+  html,body{ width:100%; height:100%; overflow:hidden; background:var(--bg-deep); font-family: 'JetBrains Mono', 'Courier New', monospace; }
+  #game-root{ position:relative; width:100%; height:100%; }
+  canvas{ display:block; touch-action:none; }
+
+  @font-face{ font-family:'DispFont'; src: local('Arial Narrow'); }
+
+  .display-font{
+    font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
+    letter-spacing: 0.18em;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  /* ---------- HUD ---------- */
+  #hud{
+    position:absolute; inset:0; pointer-events:none;
+    display:flex; flex-direction:column; justify-content:space-between;
+    padding: 18px; z-index: 5;
+    opacity:0; transition: opacity .5s ease;
+  }
+  #hud.visible{ opacity:1; }
+
+  .hud-top{ display:flex; justify-content:space-between; align-items:flex-start; }
+  .hud-bottom{ display:flex; justify-content:space-between; align-items:flex-end; }
+
+  .stat-block{
+    background: rgba(11,15,30,0.55);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 8px 14px;
+    backdrop-filter: blur(6px);
+    min-width: 150px;
+  }
+  .stat-label{
+    font-size: 9px; color: var(--text-dim); letter-spacing: 0.2em; margin-bottom: 4px;
+  }
+  .stat-value{
+    font-size: 22px; color: var(--text); font-weight:700; line-height:1;
+  }
+  .stat-value.plasma{ color: var(--plasma); }
+  .stat-value.ion{ color: var(--ion); }
+
+  .bar-wrap{
+    width: 160px; height: 6px; background: rgba(255,255,255,0.08);
+    border-radius: 3px; overflow:hidden; margin-top:6px;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .bar-fill{ height:100%; width:100%; transition: width .15s linear; }
+  .bar-fill.shield{ background: linear-gradient(90deg, var(--ion-dim), var(--ion)); }
+  .bar-fill.fuel{ background: linear-gradient(90deg, var(--plasma-dim), var(--plasma)); }
+
+  .crosshair{
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    width:26px; height:26px; pointer-events:none;
+  }
+  .crosshair::before, .crosshair::after{
+    content:''; position:absolute; background: rgba(231,236,247,0.35);
+  }
+  .crosshair::before{ width:100%; height:1px; top:50%; left:0; }
+  .crosshair::after{ width:1px; height:100%; left:50%; top:0; }
+
+  .warning-flash{
+    position:absolute; inset:0; background: radial-gradient(ellipse at center, transparent 40%, rgba(255,77,109,0.35) 100%);
+    opacity:0; pointer-events:none; transition: opacity .1s;
+    z-index: 4;
+  }
+  .warp-flash{
+    position:absolute; inset:0; background: radial-gradient(ellipse at center, rgba(255,255,255,0.9) 0%, rgba(138,77,227,0.6) 40%, transparent 75%);
+    opacity:0; pointer-events:none; transition: opacity .45s ease;
+    z-index: 7;
+  }
+
+  /* ---------- Inventory Panel ---------- */
+  #inventoryPanel{
+    position:absolute; top: 82px; right: 18px; z-index: 6;
+    background: rgba(11,15,30,0.6); border:1px solid var(--line); border-radius:3px;
+    padding: 10px 12px; backdrop-filter: blur(6px); min-width: 150px;
+    pointer-events:auto; opacity:0; transition: opacity .5s ease;
+  }
+  #inventoryPanel.visible{ opacity:1; }
+  .inv-title{ font-size:9px; color:var(--text-dim); letter-spacing:0.2em; margin-bottom:6px; }
+  .inv-row{ display:flex; justify-content:space-between; font-size:12px; color:var(--text); margin-bottom:3px; }
+  .inv-row span{ color:var(--text-dim); }
+  .inv-btn{
+    width:100%; margin-top:8px; padding:7px 0; font-family:inherit; font-size:10px;
+    letter-spacing:0.1em; font-weight:700; text-transform:uppercase; cursor:pointer;
+    background:transparent; border:1px solid var(--ion); color:var(--ion); border-radius:2px;
+    transition: all .15s ease;
+  }
+  .inv-btn:hover{ background:var(--ion); color:#0a0a12; }
+  .inv-btn:disabled{ opacity:0.35; cursor:not-allowed; }
+  .inv-btn:disabled:hover{ background:transparent; color:var(--ion); }
+  .inv-btn.ad{ border-color:var(--plasma); color:var(--plasma); margin-top:6px; }
+  .inv-btn.ad:hover{ background:var(--plasma); color:#0a0a12; }
+  .inv-btn.ad:disabled:hover{ background:transparent; color:var(--plasma); }
+
+  #toast{
+    position:absolute; bottom: 200px; left:50%; transform:translateX(-50%) translateY(10px);
+    background: rgba(11,15,30,0.85); border:1px solid var(--ion); color:var(--text);
+    padding: 10px 20px; border-radius:3px; font-size:12px; letter-spacing:0.05em;
+    z-index: 9; opacity:0; pointer-events:none; transition: all .3s ease;
+  }
+  #toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  #adPopup .panel{ padding: 50px 40px; }
+  #adDots{ display:inline-block; width: 30px; text-align:left; }
+
+  /* ---------- Ship Select ---------- */
+  .ship-select-overlay{
+    position:absolute; inset:0; z-index:12; display:flex; align-items:center; justify-content:center;
+    background: rgba(5,6,13,0.92); backdrop-filter: blur(4px);
+  }
+  .ship-select-overlay.hidden{ display:none; }
+  .ship-select-panel{ width:92%; max-width: 920px; max-height:86vh; display:flex; flex-direction:column; }
+  .ship-select-header{ text-align:center; margin-bottom:14px; }
+  .ship-grid{
+    display:grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap:10px;
+    overflow-y:auto; padding: 4px 4px 12px;
+  }
+  .ship-card{
+    border:1px solid var(--line); border-radius:4px; padding:12px 10px; text-align:center;
+    background: rgba(11,15,30,0.55); cursor:pointer; transition: all .15s ease;
+  }
+  .ship-card:hover{ border-color: var(--ion); background: rgba(77,227,209,0.08); }
+  .ship-card.selected{ border-color: var(--plasma); background: rgba(255,122,69,0.1); }
+  .ship-card .swatch{
+    width:44px; height:44px; margin:0 auto 8px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center; font-size:20px;
+  }
+  .ship-card .tag{ font-size:8px; letter-spacing:0.15em; color:var(--text-dim); margin-bottom:4px; }
+  .ship-card .name{ font-size:12px; color:var(--text); font-weight:700; margin-bottom:4px; line-height:1.3; }
+  .ship-card .desc{ font-size:9.5px; color:var(--text-dim); line-height:1.4; }
+  .ship-card .stats{ margin-top:8px; font-size:9px; color:var(--ion); display:flex; justify-content:space-around; }
+  .ship-select-footer{ text-align:center; margin-top:14px; }
+
+  /* ---------- Star Info Popup ---------- */
+  #starPopup{
+    position:absolute; top: 90px; left:50%; transform:translateX(-50%) translateY(-8px);
+    width: 300px; background: rgba(11,15,30,0.8); border:1px solid var(--ion);
+    border-radius:4px; padding: 14px 16px; backdrop-filter: blur(6px);
+    z-index:6; opacity:0; pointer-events:none; transition: all .3s ease;
+    text-align:center;
+  }
+  #starPopup.show{ opacity:1; transform:translateX(-50%) translateY(0); pointer-events:auto; }
+  #starPopup .star-name{ font-size:15px; color:var(--ion); font-weight:700; letter-spacing:0.08em; margin-bottom:4px; }
+  #starPopup .star-fact{ font-size:11px; color:var(--text-dim); line-height:1.5; }
+  #starPopup .colonize-btn{
+    margin-top:10px; width:100%; padding:7px 0; font-family:inherit; font-size:10px;
+    letter-spacing:0.1em; font-weight:700; text-transform:uppercase; cursor:pointer;
+    background:transparent; border:1px solid var(--plasma); color:var(--plasma); border-radius:2px;
+  }
+  .colonize-btn:hover{ background:var(--plasma); color:#0a0a12; }
+  .colonize-btn:disabled{ opacity:0.35; cursor:not-allowed; }
+
+  /* ---------- Colony Respawn Buttons (실드 표시칸 위, 식민지 개수만큼 누적) ---------- */
+  #colonyRespawnContainer{
+    position:absolute; bottom: 74px; left: 18px; z-index:6;
+    display:flex; flex-direction:column-reverse; gap:6px;
+  }
+  .colony-respawn-btn{
+    padding:7px 14px; font-family:inherit; font-size:9.5px; letter-spacing:0.08em; font-weight:700;
+    text-transform:uppercase; cursor:pointer; border-radius:2px;
+    background: rgba(77,227,209,0.15); border:1px solid var(--ion); color:var(--ion);
+    display:inline-flex; align-items:center; gap:6px; white-space:nowrap;
+  }
+  .colony-respawn-btn:hover{ background: rgba(77,227,209,0.3); }
+
+  /* ---------- Home Button (게임플레이 중 홈으로 이동) ---------- */
+  #homeBtn{
+    position:absolute; top: 82px; left: 18px; z-index:6;
+    padding:7px 16px; font-family:inherit; font-size:9.5px; letter-spacing:0.12em; font-weight:700;
+    text-transform:uppercase; cursor:pointer; border-radius:2px;
+    background: rgba(11,15,30,0.55); border:1px solid var(--line); color:var(--text-dim);
+    display:none; align-items:center; gap:6px; backdrop-filter: blur(6px);
+  }
+  #homeBtn.visible{ display:inline-flex; }
+  #homeBtn:hover{ border-color:var(--danger); color:var(--danger); }
+
+  /* ---------- Alien Comm Panel ---------- */
+  #commPanel{
+    position:absolute; left: 18px; top: 50%; transform:translateY(-50%) translateX(-12px);
+    width: 260px; background: rgba(11,15,30,0.85); border:1px solid var(--plasma);
+    border-radius:4px; padding: 14px 16px; backdrop-filter: blur(6px);
+    z-index:8; opacity:0; pointer-events:none; transition: all .3s ease;
+  }
+  #commPanel.show{ opacity:1; transform:translateY(-50%) translateX(0); pointer-events:auto; }
+  #commPanel .comm-sender{ font-size:9px; color:var(--plasma); letter-spacing:0.15em; margin-bottom:6px; }
+  #commPanel .comm-message{ font-size:12px; color:var(--text); line-height:1.5; margin-bottom:10px; }
+  #commPanel .comm-replies{ display:flex; flex-direction:column; gap:6px; }
+  #commPanel .comm-reply-btn{
+    padding:7px 10px; font-family:inherit; font-size:10px; text-align:left; cursor:pointer;
+    background:transparent; border:1px solid var(--line); color:var(--text-dim); border-radius:2px;
+  }
+  #commPanel .comm-reply-btn:hover{ border-color:var(--plasma); color:var(--text); }
+  #commPanel .comm-progress{ margin-top:10px; font-size:9px; color:var(--text-dim); letter-spacing:0.1em; }
+
+  /* ---------- Touch Controls ---------- */
+  #touch-controls{
+    position:absolute; bottom:0; left:0; right:0; height:180px;
+    display:none; z-index: 6; pointer-events:none;
+  }
+  #touch-controls.active{ display:block; }
+  #stick-zone{
+    position:absolute; left:16px; bottom:16px; width:130px; height:130px;
+    border-radius:50%; border:1px solid var(--line); background:rgba(11,15,30,0.4);
+    pointer-events:auto;
+  }
+  #stick-knob{
+    position:absolute; width:52px; height:52px; border-radius:50%;
+    background: rgba(77,227,209,0.25); border:1px solid var(--ion);
+    top:50%; left:50%; transform:translate(-50%,-50%);
+  }
+  #boost-btn{
+    position:absolute; right:20px; bottom:24px; width:88px; height:88px; border-radius:50%;
+    background: rgba(255,122,69,0.18); border:1px solid var(--plasma);
+    color: var(--plasma); display:flex; align-items:center; justify-content:center;
+    font-size:11px; letter-spacing:0.15em; font-weight:700; pointer-events:auto;
+    user-select:none;
+  }
+  #boost-btn.pressed{ background: rgba(255,122,69,0.45); }
+
+  /* ---------- Overlays ---------- */
+  .overlay{
+    position:absolute; inset:0; z-index:10;
+    display:flex; align-items:center; justify-content:center;
+    background: radial-gradient(ellipse at 50% 30%, #0e1530 0%, #05060d 75%);
+  }
+  .overlay.hidden{ display:none; }
+
+  .panel{
+    text-align:center; padding: 40px; max-width: 560px; width:90%;
+  }
+  .kicker{
+    font-size: 11px; color: var(--ion); letter-spacing: 0.4em; margin-bottom: 18px;
+  }
+  .title{
+    font-size: clamp(38px, 9vw, 64px); color: var(--text); line-height: 0.95;
+    text-shadow: 0 0 30px rgba(77,227,209,0.35);
+  }
+  .title span{ color: var(--plasma); text-shadow: 0 0 30px rgba(255,122,69,0.45); }
+  .subtitle{
+    margin-top: 18px; color: var(--text-dim); font-size: 13px; letter-spacing: 0.05em;
+    line-height: 1.7; text-transform:none; font-weight:400;
+  }
+
+  .rules{
+    display:flex; justify-content:center; gap: 26px; margin: 30px 0;
+    flex-wrap: wrap;
+  }
+  .rule{ font-size: 11px; color: var(--text-dim); text-align:center; width: 90px; }
+  .rule .icon{ font-size: 20px; color: var(--ion); margin-bottom: 6px; display:block; }
+
+  .btn{
+    display:inline-block; margin-top: 10px; padding: 14px 46px;
+    background: transparent; border: 1px solid var(--plasma); color: var(--plasma);
+    font-family: inherit; font-size: 13px; letter-spacing: 0.25em; font-weight:700;
+    text-transform: uppercase; cursor:pointer; border-radius: 2px;
+    transition: all .2s ease; position:relative; overflow:hidden;
+  }
+  .btn:hover{ background: var(--plasma); color: #0a0a12; box-shadow: 0 0 24px rgba(255,122,69,0.5); }
+  .btn:active{ transform: scale(0.97); }
+
+  .final-score{
+    font-size: 54px; color: var(--ion); margin: 14px 0 4px; font-weight:700;
+    text-shadow: 0 0 24px rgba(77,227,209,0.5);
+  }
+  .final-label{ font-size:10px; letter-spacing:0.3em; color:var(--text-dim); }
+  .best{ margin-top: 10px; font-size: 11px; color: var(--text-dim); }
+  .best b{ color: var(--text); }
+
+  .loading-line{ font-size: 10px; color: var(--text-dim); letter-spacing:0.2em; margin-top:14px; min-height:14px; }
+
+  @media (max-width: 640px){
+    .stat-block{ min-width: 110px; padding: 6px 10px; }
+    .stat-value{ font-size:17px; }
+    .bar-wrap{ width: 110px; }
+  }
+</style>
+</head>
+<body>
+<div id="game-root">
+  <canvas id="scene"></canvas>
+
+  <div class="warning-flash" id="warningFlash"></div>
+  <div class="warp-flash" id="warpFlash"></div>
+  <div class="crosshair" id="crosshair" style="display:none;"></div>
+
+  <div id="inventoryPanel">
+    <div class="inv-title">CARGO</div>
+    <div class="inv-row"><span>고철 (Raw Scrap)</span><b id="invScrap">0</b></div>
+    <div class="inv-row"><span>정제 합금</span><b id="invAlloy">0</b></div>
+    <div class="inv-row"><span>데이터 조각</span><b id="invCore">0</b></div>
+    <button class="inv-btn" id="refineBtn">정제하기 (고철 3 → 합금 1)</button>
+    <button class="inv-btn ad" id="adBtn">📺 광고 보고 보상받기</button>
+  </div>
+  <div id="toast"></div>
+  <div id="starPopup">
+    <div class="star-name" id="starPopupName">-</div>
+    <div class="star-fact" id="starPopupFact">-</div>
+    <button class="colonize-btn" id="colonizeBtn" style="display:none;">식민화 (합금 10 소모)</button>
+  </div>
+  <div id="colonyRespawnContainer"></div>
+  <button id="homeBtn">🏠 <span>홈으로 이동</span></button>
+  <div id="commPanel">
+    <div class="comm-sender" id="commSender">-</div>
+    <div class="comm-message" id="commMessage">-</div>
+    <div class="comm-replies" id="commReplies"></div>
+    <div class="comm-progress" id="commProgress">교신 0/10</div>
+  </div>
+
+  <div id="hud">
+    <div class="hud-top">
+      <div class="stat-block">
+        <div class="stat-label">SCORE</div>
+        <div class="stat-value ion" id="scoreVal">0</div>
+      </div>
+      <div class="stat-block">
+        <div class="stat-label">SCRAP</div>
+        <div class="stat-value plasma" id="scrapVal">0</div>
+      </div>
+      <div class="stat-block" style="text-align:right;">
+        <div class="stat-label">DISTANCE</div>
+        <div class="stat-value" id="distVal">0<span style="font-size:12px;color:var(--text-dim);"> LY</span></div>
+      </div>
+    </div>
+    <div class="hud-bottom">
+      <div class="stat-block">
+        <div class="stat-label">SHIELD</div>
+        <div class="bar-wrap"><div class="bar-fill shield" id="shieldBar"></div></div>
+      </div>
+      <div class="stat-block" style="text-align:right;">
+        <div class="stat-label">BOOST FUEL</div>
+        <div class="bar-wrap"><div class="bar-fill fuel" id="fuelBar"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="touch-controls">
+    <div id="stick-zone"><div id="stick-knob"></div></div>
+    <div id="boost-btn">BOOST</div>
+  </div>
+
+  <!-- START SCREEN -->
+  <div class="overlay" id="startScreen">
+    <div class="panel">
+      <div class="kicker">// SIGNAL LOST BEYOND KEPLER BELT</div>
+      <div class="title display-font">VOID<br><span>RUNNER</span></div>
+      <div class="subtitle">잔해로 가득한 항로를 뚫고 최대한 멀리 비행하세요.<br>소행성을 피하고, 이온 크리스탈을 모아 점수를 올리세요.</div>
+      <div class="rules">
+        <div class="rule"><span class="icon">⌨</span>WASD / 방향키<br>또는 터치 스틱 — 조종</div>
+        <div class="rule"><span class="icon">⚡</span>SHIFT / 부스트<br>버튼 — 가속</div>
+        <div class="rule"><span class="icon">◆</span>크리스탈 획득<br>= 점수 +</div>
+        <div class="rule"><span class="icon">☄</span>소행성 충돌<br>= 실드 손상 + 파괴 시 자원</div>
+        <div class="rule"><span class="icon">🛰</span>함선 잔해 청소<br>= 부품 자원 획득</div>
+        <div class="rule"><span class="icon">✦</span>항성 근접<br>= 정보 확인 · 식민화</div>
+        <div class="rule"><span class="icon">🕳</span>블랙홀 근접<br>= 중력 이탈 주의</div>
+      </div>
+      <button class="btn" id="startBtn">비행 시작</button>
+      <div style="margin-top:12px;">
+        <button class="btn" id="shipSwapBtn" style="border-color:var(--ion); color:var(--ion); padding:10px 30px; font-size:11px;">🚀 함선 교체: <span id="currentShipLabel">-</span></button>
+      </div>
+      <div class="loading-line" id="loadingLine"></div>
+    </div>
+  </div>
+
+  <!-- SHIP SELECT -->
+  <div class="ship-select-overlay hidden" id="shipSelectOverlay">
+    <div class="ship-select-panel">
+      <div class="ship-select-header">
+        <div class="kicker">// HANGAR BAY</div>
+        <div class="title display-font" style="font-size:28px;">함선 선택</div>
+      </div>
+      <div class="ship-grid" id="shipGrid"></div>
+      <div class="ship-select-footer">
+        <button class="btn" id="shipSelectCloseBtn" style="padding:10px 34px; font-size:11px;">선택 완료</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- AD POPUP -->
+  <div class="overlay hidden" id="adPopup">
+    <div class="panel">
+      <div class="kicker">// SPONSORED TRANSMISSION</div>
+      <div class="title display-font" style="font-size:32px;">광고 시청 중<span id="adDots">...</span></div>
+      <div class="subtitle">잠시 후 보상이 지급됩니다. 창을 닫지 마세요.</div>
+    </div>
+  </div>
+
+  <!-- GAME OVER SCREEN -->
+  <div class="overlay hidden" id="overScreen">
+    <div class="panel">
+      <div class="kicker">// HULL BREACH — 임무 종료</div>
+      <div class="final-label">최종 점수</div>
+      <div class="final-score" id="finalScore">0</div>
+      <div class="best">최고 기록 <b id="bestScore">0</b></div>
+      <button class="btn" id="retryBtn" style="margin-top:26px;">재도전</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  /* ============ SETUP ============ */
+  const canvas = document.getElementById('scene');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:false, powerPreference:'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x060814, 0.0035);
+
+  const camera = new THREE.PerspectiveCamera(68, window.innerWidth/window.innerHeight, 0.1, 3000);
+
+  window.addEventListener('resize', ()=>{
+    camera.aspect = window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  /* ============ LIGHTING ============ */
+  const ambientLight = new THREE.AmbientLight(0x35405f, 1.1);
+  scene.add(ambientLight);
+  const sunLight = new THREE.DirectionalLight(0xfff2e0, 1.4);
+  sunLight.position.set(-80, 60, -40);
+  scene.add(sunLight);
+  const rimLight = new THREE.DirectionalLight(0x4de3d1, 0.5);
+  rimLight.position.set(40,-20,60);
+  scene.add(rimLight);
+
+  /* ============ 배경 레이어 설계: 3단계 패럴랙스 (성운 → 먼지 → 파편) ============
+     기법: 실제 파티클을 움직이는 대신, 각 레이어를 서로 다른 크기의 "격자 셀"에
+     스냅시킨다. 셀이 클수록 함선이 이동해도 같은 셀 안에 오래 머무르므로
+     화면상에서 천천히 움직이는 것처럼 보인다 → 이것이 곧 원근감(패럴랙스)이다.
+     삼각함수나 실시간 카메라-거리 계산 없이 모듈로 연산 한 줄로 무한한 우주와
+     3중 깊이감을 동시에 얻을 수 있어 매우 저렴하다.
+     - 성운(nebula) : 셀 1600 → 가장 느리게 움직임 = 가장 멀리 있는 것처럼 보임
+     - 먼지(dust)   : 셀 350  → 중간 속도
+     - 파편(debris) : 셀 130  → 가장 빠르게 재배치 = 가장 가까이 있는 것처럼 보임
+  */
+  const parallaxLayers = []; // { mesh, cell }
+  function registerParallaxLayer(mesh, cell){
+    scene.add(mesh);
+    parallaxLayers.push({ mesh, cell });
+    return mesh;
+  }
+
+  function makeStarfield(count, spread, size, color, opacity){
+    const geo = new THREE.BufferGeometry();
+    const pos = new Float32Array(count*3);
+    for(let i=0;i<count;i++){
+      pos[i*3+0] = (Math.random()-0.5)*spread;
+      pos[i*3+1] = (Math.random()-0.5)*spread;
+      pos[i*3+2] = (Math.random()-0.5)*spread;
+    }
+    geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+    const mat = new THREE.PointsMaterial({ color, size, transparent:true, opacity, depthWrite:false, sizeAttenuation:true });
+    return new THREE.Points(geo, mat);
+  }
+
+  /* 부드러운 원형 스프라이트 텍스처 — 성운 파티클용 (캔버스로 즉석 생성, 외부 이미지 불필요) */
+  function makeGlowTexture(){
+    const size = 128;
+    const cnv = document.createElement('canvas');
+    cnv.width = cnv.height = size;
+    const ctx = cnv.getContext('2d');
+    const grad = ctx.createRadialGradient(size/2,size/2,0,size/2,size/2,size/2);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.35, 'rgba(255,255,255,0.45)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0,size,size);
+    return new THREE.CanvasTexture(cnv);
+  }
+  const glowTex = makeGlowTexture();
+
+  function makeNebulaLayer(count, spread, colors){
+    const geo = new THREE.BufferGeometry();
+    const pos = new Float32Array(count*3);
+    const col = new Float32Array(count*3);
+    const c = new THREE.Color();
+    for(let i=0;i<count;i++){
+      pos[i*3+0] = (Math.random()-0.5)*spread;
+      pos[i*3+1] = (Math.random()-0.5)*spread*0.35;
+      pos[i*3+2] = (Math.random()-0.5)*spread;
+      c.set(colors[Math.floor(Math.random()*colors.length)]);
+      col[i*3+0]=c.r; col[i*3+1]=c.g; col[i*3+2]=c.b;
+    }
+    geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+    geo.setAttribute('color', new THREE.BufferAttribute(col,3));
+    const mat = new THREE.PointsMaterial({
+      size: 260, map: glowTex, transparent:true, opacity:0.3,
+      vertexColors:true, blending:THREE.AdditiveBlending,
+      depthWrite:false, sizeAttenuation:true
+    });
+    return new THREE.Points(geo, mat);
+  }
+
+  // LAYER 1 — 성운 (가장 먼 배경, 거대하고 흐릿한 색 구름)
+  const nebulaLayer = makeNebulaLayer(55, 1700, [0x3a2a6a, 0x1f3a6a, 0x6a2a4a, 0x24406a]);
+  registerParallaxLayer(nebulaLayer, 1600);
+
+  // LAYER 2 — 먼지 (중간 거리, 촘촘한 별가루)
+  const dustLayerFar  = makeStarfield(2400, 500, 1.3, 0xffffff, 0.7);
+  const dustLayerNear = makeStarfield(900, 350, 1.9, 0x9fd8ff, 0.75);
+  registerParallaxLayer(dustLayerFar, 500);
+  registerParallaxLayer(dustLayerNear, 350);
+
+  // LAYER 3 — 파편 (가장 가까운 전경, 크고 빠르게 스쳐가는 잔해 반짝임)
+  const debrisLayer = makeStarfield(160, 150, 2.2, 0xffb37a, 0.7);
+  registerParallaxLayer(debrisLayer, 150);
+
+  /* ============ 은하수(Milky Way) & 은하단 (Galaxy Clusters) ============
+     초거대 스케일 배경 오브젝트. 셀이 매우 큰 패럴랙스 레이어에 편입시켜
+     함선이 아무리 멀리 이동해도 "항상 저 멀리 떠 있는" 느낌을 유지한다. */
+  function makeGalaxyDisc(radius, count, colorInner, colorOuter){
+    const geo = new THREE.BufferGeometry();
+    const pos = new Float32Array(count*3);
+    const col = new Float32Array(count*3);
+    const cIn = new THREE.Color(colorInner), cOut = new THREE.Color(colorOuter);
+    for(let i=0;i<count;i++){
+      const r = Math.random()*radius;
+      const spiral = r*0.0022 + Math.random()*0.7;
+      const ang = Math.random()*Math.PI*2 + spiral;
+      pos[i*3+0] = Math.cos(ang)*r;
+      pos[i*3+1] = (Math.random()-0.5)*radius*0.04;
+      pos[i*3+2] = Math.sin(ang)*r;
+      const c = cIn.clone().lerp(cOut, r/radius);
+      col[i*3+0]=c.r; col[i*3+1]=c.g; col[i*3+2]=c.b;
+    }
+    geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+    geo.setAttribute('color', new THREE.BufferAttribute(col,3));
+    const mat = new THREE.PointsMaterial({
+      size: 3.2, map: glowTex, vertexColors:true, transparent:true, opacity:0.5,
+      blending:THREE.AdditiveBlending, depthWrite:false, sizeAttenuation:true
+    });
+    return new THREE.Points(geo, mat);
+  }
+  const milkyWay = makeGalaxyDisc(2600, 3200, 0xfff6e0, 0x3a5aa0);
+  milkyWay.rotation.x = Math.PI/2.3;
+  milkyWay.rotation.z = 0.35;
+  milkyWay.position.y = -500;
+  registerParallaxLayer(milkyWay, 6000); // 초거대 셀 → 사실상 고정된 배경처럼 보임
+
+  const galaxyClusters = makeNebulaLayer(36, 5200, [0xffffff, 0xaeefff, 0xffe6c2, 0xd9c2ff]);
+  galaxyClusters.material.size = 46;
+  galaxyClusters.material.opacity = 0.55;
+  registerParallaxLayer(galaxyClusters, 6000);
+
+  /* distant sun sprite (태양) */
+  const sunGeo = new THREE.SphereGeometry(40, 24, 24);
+  const sunMat = new THREE.MeshBasicMaterial({ color: 0xffdca8, fog:false });
+  const sunMesh = new THREE.Mesh(sunGeo, sunMat);
+  sunMesh.position.set(-900, 400, -1400);
+  scene.add(sunMesh);
+  const sunGlowGeo = new THREE.SphereGeometry(90, 24, 24);
+  const sunGlowMat = new THREE.MeshBasicMaterial({ color:0xff7a45, transparent:true, opacity:0.15, fog:false });
+  const sunGlow = new THREE.Mesh(sunGlowGeo, sunGlowMat);
+  sunGlow.position.copy(sunMesh.position);
+  scene.add(sunGlow);
+
+  /* ============ 행성 시스템 ============
+     bgPlanets: 함선 경로를 따라 배치되는 장식용(비충돌) 천체.
+     시작 구역(태양계)에는 수성·금성·지구를 이름을 가진 실제 천체로 배치하고,
+     웜홀로 다른 은하로 넘어가면 그 구역 팔레트에 맞는 낯선 행성들로 교체된다. */
+  const bgPlanets = [];
+
+  const SOLAR_BODIES = [
+    { name:'Mercury', radius:16, color:0x9c8a6a },
+    { name:'Venus',   radius:30, color:0xd8b06a },
+    { name:'Earth',   radius:32, color:0x2f6fbf, atmosphere:0x6fd0ff }
+  ];
+
+  function spawnSolarBodies(forward, baseDist){
+    SOLAR_BODIES.forEach((b,i)=>{
+      const mat = new THREE.MeshStandardMaterial({ color:b.color, roughness:0.9, metalness:0.05, fog:true });
+      const m = new THREE.Mesh(new THREE.SphereGeometry(b.radius, 26, 26), mat);
+      const offset = randSpawnOffset(forward, 180, 420);
+      m.position.copy(ship.position).add(forward.clone().multiplyScalar(baseDist + i*650)).add(offset);
+      m.userData.name = b.name;
+      scene.add(m);
+      bgPlanets.push(m);
+      if(b.atmosphere){
+        const atmo = new THREE.Mesh(
+          new THREE.SphereGeometry(b.radius*1.05, 26, 26),
+          new THREE.MeshBasicMaterial({ color:b.atmosphere, transparent:true, opacity:0.2, fog:false })
+        );
+        atmo.position.copy(m.position);
+        scene.add(atmo);
+        bgPlanets.push(atmo);
+      }
+    });
+  }
+
+  /* 웜홀 너머 다른 은하 구역에 진입했을 때 쓰이는 범용 장식 행성 스포너 */
+  function spawnZonePlanets(forward, palette, baseDist, count){
+    for(let i=0;i<count;i++){
+      const r = 26 + Math.random()*55;
+      const mat = new THREE.MeshStandardMaterial({ color: palette[i%palette.length], roughness:1, metalness:0.05, fog:true });
+      const m = new THREE.Mesh(new THREE.SphereGeometry(r, 22, 22), mat);
+      const offset = randSpawnOffset(forward, 150, 500);
+      m.position.copy(ship.position).add(forward.clone().multiplyScalar(baseDist + i*500 + Math.random()*200)).add(offset);
+      scene.add(m);
+      bgPlanets.push(m);
+    }
+  }
+
+  /* ============ 구역(우주 규모) 시스템 — 웜홀로 이동할 때마다 실제 우주의 위계 구조를
+     한 단계씩 따라 더 큰 스케일로 이동한다: 항성계 → 항성 이웃 → 은하 나선팔 →
+     은하 중심 → 국부은하군 → 초은하단. 각 구역에는 실존하는 천체 정보를 배치했다. */
+  const ZONES = [
+    { name:'솔 항성계', scale:'STELLAR SYSTEM',
+      fog:0x060814, ambient:0x35405f, nebula:[0x3a2a6a,0x1f3a6a,0x6a2a4a,0x24406a], planetColors:[0x9c8a6a,0xd8b06a,0x4a7fd6,0x8a6a4a],
+      stars:[
+        { name:'태양 (Sol)', fact:'지구에서 약 1억 5천만km 거리의 G형 주계열성. 태양계 전체 질량의 99.8%를 차지한다.', colonizable:false },
+        { name:'프록시마 센타우리', fact:'태양에서 가장 가까운 항성. 약 4.24광년 거리에 있는 적색왜성이다.', colonizable:true },
+        { name:'알파 센타우리 B', fact:'두 개의 태양급 항성이 서로를 공전하는 근접 쌍성계의 일원.', colonizable:true }
+      ] },
+    { name:'항성 이웃 구역', scale:'STELLAR NEIGHBORHOOD',
+      fog:0x1a0620, ambient:0x5a2f6f, nebula:[0x6a1f4a,0x8a2a6a,0x3a0f5a,0x4a1f6a], planetColors:[0x7a2a6a,0xb04a8a,0x2a1a5a,0x9a3a7a],
+      stars:[
+        { name:'시리우스', fact:'밤하늘에서 가장 밝게 보이는 항성. 지구에서 약 8.6광년 거리에 있다.', colonizable:true },
+        { name:'바너드 별', fact:'알려진 항성 중 고유운동이 가장 빠른 적색왜성.', colonizable:true },
+        { name:'로스 154', fact:'뱀자리 방향에 위치한 플레어 성. 주기적으로 강한 항성 플레어를 방출한다.', colonizable:false }
+      ] },
+    { name:'오리온 나선팔', scale:'GALACTIC SPIRAL ARM',
+      fog:0x08160a, ambient:0x2f6f45, nebula:[0x1f6a3a,0x2a8a4a,0x0f5a2a,0x1f6a5a], planetColors:[0x2a8a5a,0x6ab04a,0x1a5a3a,0x3a8a6a],
+      stars:[
+        { name:'베텔게우스', fact:'오리온자리의 적색초거성. 태양 반지름의 약 700배이며 언젠가 초신성으로 폭발할 것으로 예상된다.', colonizable:false },
+        { name:'리겔', fact:'오리온자리의 청색초거성. 밝기는 태양의 약 12만 배에 달한다.', colonizable:false },
+        { name:'베가', fact:'거문고자리의 항성. 약 12,000년 후에는 세차운동으로 인해 북극성 역할을 하게 된다.', colonizable:true },
+        { name:'데네브', fact:'백조자리의 초거성. 지구에서 매우 멀지만 워낙 밝아 육안으로도 관측된다.', colonizable:true }
+      ] },
+    { name:'은하 중심부', scale:'GALACTIC CORE',
+      fog:0x1a0a06, ambient:0x8a5a2f, nebula:[0x8a3a1f,0xb0602a,0x6a2a0f,0x8a4a1f], planetColors:[0xb0602a,0x8a3a1f,0xd88a4a,0x6a2a0f],
+      stars:[
+        { name:'궁수자리 A*', fact:'우리은하 중심에 자리한 초대질량 블랙홀. 질량은 태양의 약 400만 배로 추정된다.', colonizable:false },
+        { name:'S2 항성', fact:'궁수자리 A* 주위를 단 16년 주기로 공전하는 항성. 근일점에서 강한 중력 렌즈 효과를 보인다.', colonizable:false }
+      ] },
+    { name:'국부은하군', scale:'LOCAL GROUP',
+      fog:0x120a1e, ambient:0x6a3f8f, nebula:[0x4a1f7a,0x2a1a5a,0x6a2a8a,0x3a1a6a], planetColors:[0x6a3a9a,0x4a2a7a,0x8a4aba,0x3a1a5a],
+      stars:[
+        { name:'안드로메다 은하 (M31)', fact:'우리은하와 가장 가까운 대형 나선은하. 약 250만 광년 거리이며 수십억 년 뒤 은하수와 충돌할 것으로 예측된다.', colonizable:true },
+        { name:'삼각형자리 은하 (M33)', fact:'국부은하군에서 세 번째로 큰 은하로, 안드로메다 은하의 위성 은하일 가능성이 제기된다.', colonizable:true }
+      ] },
+    { name:'라니아케아 초은하단', scale:'SUPERCLUSTER',
+      fog:0x08121e, ambient:0x2f5f8f, nebula:[0x1f4a7a,0x2a6a9a,0x0f3a6a,0x1f5a8a], planetColors:[0x2a6a9a,0x4a8aba,0x1a4a7a,0x3a7a9a],
+      stars:[
+        { name:'처녀자리 은하단', fact:'1,300개 이상의 은하로 이루어진 거대 은하단으로, 국부은하군을 포함한 초은하단의 중심부에 해당한다.', colonizable:true },
+        { name:'라니아케아', fact:'"측정할 수 없는 하늘"이라는 뜻의 하와이어에서 딴 이름. 우리은하를 포함한 약 10만 개 은하가 속한 초은하단이다.', colonizable:false }
+      ] }
+  ];
+  let currentZoneIndex = 0;
+  let stars = [];
+
+  function applyZone(idx){
+    const z = ZONES[idx];
+    scene.fog.color.setHex(z.fog);
+    scene.background = new THREE.Color(z.fog);
+    ambientLight.color.setHex(z.ambient);
+    // 성운 색상 갱신: 지오메트리를 재생성하지 않고 컬러 버퍼만 덮어써서 저비용으로 처리
+    const colorAttr = nebulaLayer.geometry.attributes.color;
+    const c = new THREE.Color();
+    for(let i=0;i<colorAttr.count;i++){
+      c.set(z.nebula[Math.floor(Math.random()*z.nebula.length)]);
+      colorAttr.setXYZ(i, c.r, c.g, c.b);
+    }
+    colorAttr.needsUpdate = true;
+  }
+
+  /* ---- 항성 오브젝트: 근접하면 이름·설명 팝업, 식민화 가능 여부에 따라 식민화 버튼 노출 ---- */
+  function makeStarMesh(colorHex){
+    const g = new THREE.Group();
+    const core = new THREE.Mesh(new THREE.SphereGeometry(14, 20, 20), new THREE.MeshBasicMaterial({ color:colorHex, fog:false }));
+    g.add(core);
+    const glow = new THREE.Mesh(new THREE.SphereGeometry(24, 16, 16), new THREE.MeshBasicMaterial({ color:colorHex, transparent:true, opacity:0.22, fog:false }));
+    g.add(glow);
+    g.add(new THREE.PointLight(colorHex, 1.6, 200));
+    return g;
+  }
+  function spawnZoneStars(forward, baseDist){
+    const z = ZONES[currentZoneIndex];
+    z.stars.forEach((sd, i)=>{
+      const hue = new THREE.Color().setHSL((i*0.15+0.08)%1, 0.6, 0.6);
+      const mesh = makeStarMesh(hue.getHex());
+      const offset = randSpawnOffset(forward, 250, 600);
+      mesh.position.copy(ship.position).add(forward.clone().multiplyScalar(baseDist + i*900 + Math.random()*250)).add(offset);
+      mesh.userData.info = sd;
+      mesh.userData.popupRadius = 90;
+      mesh.userData.colonizeRadius = 40;
+      scene.add(mesh);
+      stars.push(mesh);
+    });
+  }
+
+  /* ============ 퀘이사 (구역당 1개, 아주 먼 곳에 배치되는 거대 배경 천체) ============ */
+  function makeQuasar(){
+    const g = new THREE.Group();
+    const core = new THREE.Mesh(new THREE.SphereGeometry(6, 20, 20), new THREE.MeshBasicMaterial({ color:0xeaffff, fog:false }));
+    g.add(core);
+    const disk = new THREE.Mesh(
+      new THREE.RingGeometry(9, 27, 48),
+      new THREE.MeshBasicMaterial({ color:0x8a4de3, side:THREE.DoubleSide, transparent:true, opacity:0.5, blending:THREE.AdditiveBlending, fog:false })
+    );
+    disk.rotation.x = Math.PI/2.15;
+    g.add(disk);
+    // 강착원반 수직으로 뿜어져 나오는 상대론적 제트
+    const jetMat = new THREE.MeshBasicMaterial({ color:0xbfe8ff, transparent:true, opacity:0.5, blending:THREE.AdditiveBlending, fog:false, depthWrite:false, side:THREE.DoubleSide });
+    const jetGeo = new THREE.ConeGeometry(3, 110, 12, 1, true);
+    const jetTop = new THREE.Mesh(jetGeo, jetMat); jetTop.position.y = 55;
+    const jetBottom = new THREE.Mesh(jetGeo, jetMat); jetBottom.position.y = -55; jetBottom.rotation.x = Math.PI;
+    g.add(jetTop, jetBottom);
+    g.add(new THREE.PointLight(0x8a4de3, 3.2, 260));
+    g.userData.disk = disk;
+    return g;
+  }
+  function spawnQuasar(forward, baseDist){
+    const g = makeQuasar();
+    const offset = randSpawnOffset(forward, 700, 1400);
+    g.position.copy(ship.position).add(forward.clone().multiplyScalar(baseDist)).add(offset);
+    g.rotation.z = Math.random()*Math.PI;
+    scene.add(g);
+    bgPlanets.push(g); // 장식용 배경 배열에 편입 → 자동 정리/느린 회전 애니메이션 공유
+  }
+
+  /* ============ 혜성 (긴 꼬리를 끌며 항로를 가로질러 표류) ============ */
+  let comets = [];
+  function makeComet(){
+    const g = new THREE.Group();
+    const core = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(0.8, 0),
+      new THREE.MeshStandardMaterial({ color:0xcfe8ff, emissive:0x9fd8ff, emissiveIntensity:0.6, roughness:0.6, metalness:0.1 })
+    );
+    g.add(core);
+    const tail = new THREE.Mesh(
+      new THREE.ConeGeometry(1.1, 18, 10, 1, true),
+      new THREE.MeshBasicMaterial({ color:0x9fd8ff, transparent:true, opacity:0.32, blending:THREE.AdditiveBlending, fog:false, depthWrite:false, side:THREE.DoubleSide })
+    );
+    g.add(tail);
+    g.add(new THREE.PointLight(0x9fd8ff, 1.3, 34));
+    g.userData.tail = tail;
+    g.userData.radius = 1.2;
+    return g;
+  }
+  function spawnComet(forward, distAhead){
+    const g = makeComet();
+    const offset = randSpawnOffset(forward, 100, 420);
+    g.position.copy(ship.position).add(forward.clone().multiplyScalar(distAhead)).add(offset);
+    const driftDir = new THREE.Vector3((Math.random()-0.5), (Math.random()-0.5)*0.35, (Math.random()-0.5)).normalize();
+    g.userData.vel = driftDir.multiplyScalar(8 + Math.random()*8);
+    scene.add(g);
+    comets.push(g);
+  }
+
+  /* ============ SHIP ============
+     ship 그룹은 스러스터/조명처럼 항상 동일한 부속만 직접 들고 있고,
+     실제 선체 형상은 hullGroup 안에서 교체 가능하다 (applyShipDesign 참고). */
+  const ship = new THREE.Group();
+  const hullGroup = new THREE.Group();
+  ship.add(hullGroup);
+  {
+    // 스러스터 화염: 밝은 코어 원뿔 + 부드러운 아우터 글로우 원뿔을 겹쳐 실감나는 분사 형태를 만든다
+    const flameCoreMat = new THREE.MeshBasicMaterial({ color:0xfff2c0, transparent:true, opacity:0.95, blending:THREE.AdditiveBlending, fog:false, depthWrite:false });
+    const flameOuterMat = new THREE.MeshBasicMaterial({ color:0xff7a45, transparent:true, opacity:0.55, blending:THREE.AdditiveBlending, fog:false, depthWrite:false });
+    const flameCoreGeo = new THREE.ConeGeometry(0.09, 0.5, 8, 1, true);
+    const flameOuterGeo = new THREE.ConeGeometry(0.17, 0.85, 8, 1, true);
+
+    ship.userData.thrusters = [-0.4, 0.4].map(x=>{
+      const holder = new THREE.Group();
+      holder.position.set(x, -0.05, -1.35);
+      const core = new THREE.Mesh(flameCoreGeo, flameCoreMat);
+      core.rotation.x = -Math.PI/2; core.position.z = -0.25;
+      const outer = new THREE.Mesh(flameOuterGeo, flameOuterMat);
+      outer.rotation.x = -Math.PI/2; outer.position.z = -0.42;
+      holder.add(core, outer);
+      ship.add(holder);
+      return { holder, core, outer };
+    });
+
+    const shipLight = new THREE.PointLight(0xff7a45, 1.4, 7);
+    shipLight.position.set(0,0,-1.4);
+    ship.add(shipLight);
+    ship.userData.shipLight = shipLight;
+  }
+  scene.add(ship);
+  ship.position.set(0,0,0);
+
+  /* ---- 스러스터 파티클 트레일 & 충돌 스파크 (풀링된 단일 포인트 시스템으로 저비용 구현) ---- */
+  const FX_COUNT = 140;
+  const fxGeo = new THREE.BufferGeometry();
+  const fxPos = new Float32Array(FX_COUNT*3);
+  const fxCol = new Float32Array(FX_COUNT*3);
+  const fxData = [];
+  for(let i=0;i<FX_COUNT;i++) fxData.push({ life:0, maxLife:1, vx:0, vy:0, vz:0, r:0, g:0, b:0 });
+  fxGeo.setAttribute('position', new THREE.BufferAttribute(fxPos,3));
+  fxGeo.setAttribute('color', new THREE.BufferAttribute(fxCol,3));
+  const fxMat = new THREE.PointsMaterial({
+    size: 0.4, map: glowTex, vertexColors:true, transparent:true, opacity:0.9,
+    blending:THREE.AdditiveBlending, depthWrite:false, sizeAttenuation:true
+  });
+  const fxPoints = new THREE.Points(fxGeo, fxMat);
+  scene.add(fxPoints);
+  let fxCursor = 0;
+  const fxTmpColor = new THREE.Color();
+  function emitFx(worldPos, colorHex, speedScale, life){
+    const i = fxCursor; fxCursor = (fxCursor+1) % FX_COUNT;
+    const d = fxData[i];
+    d.life = d.maxLife = life;
+    d.vx = (Math.random()-0.5)*speedScale;
+    d.vy = (Math.random()-0.5)*speedScale;
+    d.vz = (Math.random()-0.5)*speedScale;
+    fxTmpColor.set(colorHex);
+    d.r = fxTmpColor.r; d.g = fxTmpColor.g; d.b = fxTmpColor.b;
+    fxPos[i*3]=worldPos.x; fxPos[i*3+1]=worldPos.y; fxPos[i*3+2]=worldPos.z;
+  }
+  function spawnImpactSparks(worldPos, colorHex, count){
+    for(let k=0;k<count;k++) emitFx(worldPos, colorHex, 6 + Math.random()*5, 0.35 + Math.random()*0.25);
+  }
+  function updateFx(dt){
+    for(let i=0;i<FX_COUNT;i++){
+      const d = fxData[i];
+      if(d.life <= 0){ fxCol[i*3]=fxCol[i*3+1]=fxCol[i*3+2]=0; continue; }
+      d.life -= dt;
+      const fade = Math.max(d.life/d.maxLife, 0);
+      fxPos[i*3]   += d.vx*dt;
+      fxPos[i*3+1] += d.vy*dt;
+      fxPos[i*3+2] += d.vz*dt;
+      fxCol[i*3]   = d.r*fade;
+      fxCol[i*3+1] = d.g*fade;
+      fxCol[i*3+2] = d.b*fade;
+    }
+    fxGeo.attributes.position.needsUpdate = true;
+    fxGeo.attributes.color.needsUpdate = true;
+  }
+  const worldPosTmp = new THREE.Vector3();
+
+  /* ---- 선체 빌더 템플릿 (8종 형상을 조합해 10대의 함선을 구성) ---- */
+  function hullMats(c){
+    return {
+      body: new THREE.MeshStandardMaterial({ color:c.body, metalness:0.6, roughness:0.35 }),
+      accent: new THREE.MeshStandardMaterial({ color:c.accent, emissive:c.accent, emissiveIntensity:0.7, metalness:0.2, roughness:0.4 }),
+      dark: new THREE.MeshStandardMaterial({ color:0x1c2136, metalness:0.4, roughness:0.6 }),
+      panel: new THREE.MeshStandardMaterial({ color:0x18305a, metalness:0.3, roughness:0.5, emissive:0x0a1830, emissiveIntensity:0.3 })
+    };
+  }
+  function buildCapsuleHull(g, c){ // 아폴로 / 소유즈 계열 — 원뿔형 재진입 캡슐
+    const m = hullMats(c);
+    const body = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.4, 12), m.body);
+    body.rotation.x = Math.PI/2; body.position.z = -0.1;
+    g.add(body);
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.5, 0.5, 12), m.dark);
+    base.rotation.x = Math.PI/2; base.position.z = 0.6;
+    g.add(base);
+    const window_ = new THREE.Mesh(new THREE.CircleGeometry(0.14, 10), m.accent);
+    window_.position.set(0,0.2,-0.35); window_.rotation.x = -0.5;
+    g.add(window_);
+  }
+  function buildProbeHull(g, c){ // 보이저 / 하야부사 계열 — 소형 본체 + 태양광 패널 + 안테나
+    const m = hullMats(c);
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.4,0.4,0.5,8), m.body);
+    body.rotation.x = Math.PI/2;
+    g.add(body);
+    const dish = new THREE.Mesh(new THREE.CylinderGeometry(0.5,0.5,0.06,16), m.dark);
+    dish.rotation.x = Math.PI/2.3; dish.position.set(0,0.15,-0.45);
+    g.add(dish);
+    const panelGeo = new THREE.BoxGeometry(1.5,0.04,0.6);
+    [-0.9,0.9].forEach(x=>{
+      const p = new THREE.Mesh(panelGeo, m.panel);
+      p.position.set(x,0,0.1);
+      g.add(p);
+    });
+    const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,0.9,6), m.dark);
+    rod.rotation.x = Math.PI/2; rod.position.z = -0.75;
+    g.add(rod);
+  }
+  function buildShuttleHull(g, c){ // 우주왕복선 계열 — 델타익 궤도선
+    const m = hullMats(c);
+    const fuselage = new THREE.Mesh(new THREE.BoxGeometry(0.6,0.5,2.0), m.body);
+    g.add(fuselage);
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.3,0.6,8), m.body);
+    nose.rotation.x = Math.PI/2; nose.position.z = -1.25;
+    g.add(nose);
+    const wingGeo = new THREE.BoxGeometry(2.0,0.05,0.9);
+    const wing = new THREE.Mesh(wingGeo, m.dark);
+    wing.position.set(0,-0.15,0.5);
+    g.add(wing);
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.06,0.6,0.5), m.dark);
+    tail.position.set(0,0.45,0.7);
+    g.add(tail);
+    const cockpitGlass = new THREE.Mesh(new THREE.SphereGeometry(0.22,10,10), m.accent);
+    cockpitGlass.scale.set(1,0.7,1.4);
+    cockpitGlass.position.set(0,0.2,-0.75);
+    g.add(cockpitGlass);
+  }
+  function buildRocketHull(g, c){ // 팰컨 9 계열 — 세장형 로켓 동체
+    const m = hullMats(c);
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.28,0.28,2.2,12), m.body);
+    body.rotation.x = Math.PI/2;
+    g.add(body);
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.28,0.6,12), m.dark);
+    nose.rotation.x = Math.PI/2; nose.position.z = -1.4;
+    g.add(nose);
+    const finGeo = new THREE.BoxGeometry(0.05,0.4,0.35);
+    for(let i=0;i<4;i++){
+      const fin = new THREE.Mesh(finGeo, m.dark);
+      const ang = (Math.PI/2)*i;
+      fin.position.set(Math.sin(ang)*0.3, Math.cos(ang)*0.3, 1.0);
+      fin.rotation.z = ang;
+      g.add(fin);
+    }
+    const stripe = new THREE.Mesh(new THREE.CylinderGeometry(0.285,0.285,0.3,12), m.accent);
+    stripe.rotation.x = Math.PI/2; stripe.position.z = -0.3;
+    g.add(stripe);
+  }
+  function buildFighterHull(g, c){ // 오리지널 요격기 — 기존 기본 함선 형태
+    const m = hullMats(c);
+    const hull = new THREE.Mesh(new THREE.ConeGeometry(0.55, 2.4, 8), m.body);
+    hull.rotation.x = Math.PI/2;
+    g.add(hull);
+    const cockpit = new THREE.Mesh(new THREE.SphereGeometry(0.32,12,12), m.accent);
+    cockpit.position.set(0,0.18,0.3); cockpit.scale.set(1,0.8,1.3);
+    g.add(cockpit);
+    const wingGeo = new THREE.BoxGeometry(1.7,0.06,0.8);
+    const wingL = new THREE.Mesh(wingGeo, m.dark);
+    wingL.position.set(-0.85,-0.05,0.2); wingL.rotation.z = 0.12;
+    g.add(wingL);
+    const wingR = wingL.clone(); wingR.position.x = 0.85; wingR.rotation.z = -0.12;
+    g.add(wingR);
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.06,0.5,0.5), m.dark);
+    fin.position.set(0,0.32,-0.9);
+    g.add(fin);
+  }
+  function buildCargoHull(g, c){ // 노마드 화물선 — 대형 박스형 컨테이너 허리
+    const m = hullMats(c);
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.0,0.9,1.6), m.body);
+    g.add(body);
+    const containerGeo = new THREE.BoxGeometry(0.5,0.5,0.5);
+    [[-0.7,0,0.2],[0.7,0,0.2],[-0.7,0,-0.5],[0.7,0,-0.5]].forEach(p=>{
+      const box = new THREE.Mesh(containerGeo, m.panel);
+      box.position.set(p[0],p[1],p[2]);
+      g.add(box);
+    });
+    const cockpit = new THREE.Mesh(new THREE.SphereGeometry(0.25,10,10), m.accent);
+    cockpit.position.set(0,0.25,-0.9);
+    g.add(cockpit);
+  }
+  function buildStealthHull(g, c){ // 섀도우워크 — 납작한 각진 쐐기형
+    const m = hullMats(c);
+    const wedge = new THREE.Mesh(new THREE.ConeGeometry(0.9, 2.2, 4), m.dark);
+    wedge.rotation.x = Math.PI/2; wedge.rotation.y = Math.PI/4; wedge.scale.set(1,0.22,1);
+    g.add(wedge);
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.06,0.05,1.6), m.accent);
+    stripe.position.set(0,0.14,0);
+    g.add(stripe);
+  }
+  function buildExplorerHull(g, c){ // 오라클 익스플로러 — 대형 관측 돔 + 확장 패널
+    const m = hullMats(c);
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.55,16,16), m.body);
+    body.scale.set(1,0.9,1.6);
+    g.add(body);
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.3,14,14,0,Math.PI*2,0,Math.PI/2), m.accent);
+    dome.position.set(0,0.35,-0.5);
+    g.add(dome);
+    const panelGeo = new THREE.BoxGeometry(2.2,0.04,0.7);
+    [-1.3,1.3].forEach(x=>{
+      const p = new THREE.Mesh(panelGeo, m.panel);
+      p.position.set(x,0,0.3);
+      g.add(p);
+    });
+  }
+
+  /* ---- 10종 함선 카탈로그: 실제 지구 발사체/탐사선 6종 + 오리지널 창작 함선 4종 ----
+     (영화·게임 속 함선은 특정 라이선스 IP를 그대로 재현하는 대신, 장르 아키타입에서
+     영감을 받은 오리지널 디자인으로 새로 작명/설계했다) */
+  const SHIP_CATALOG = [
+    { id:'apollo', name:'아폴로 사령선', tag:'REAL · NASA 1968', icon:'🛰️', hull:buildCapsuleHull,
+      colors:{body:0xd7dbe6, accent:0x4de3d1}, desc:'달 궤도 왕복에 쓰인 인류 최초의 심우주 유인 캡슐.',
+      stats:{speed:1.0, turn:1.0, shield:1.0} },
+    { id:'soyuz', name:'소유즈 캡슐', tag:'REAL · Roscosmos', icon:'🛸', hull:buildCapsuleHull,
+      colors:{body:0xb8b09a, accent:0xff7a45}, desc:'50년 넘게 검증된 가장 신뢰도 높은 유인 우주선.',
+      stats:{speed:0.9, turn:0.9, shield:1.15} },
+    { id:'voyager', name:'보이저 1호', tag:'REAL · NASA 1977', icon:'📡', hull:buildProbeHull,
+      colors:{body:0xc7c2b0, accent:0xffe6a8}, desc:'태양권을 벗어나 성간 공간을 항해 중인 무인 탐사선.',
+      stats:{speed:1.05, turn:1.3, shield:0.7} },
+    { id:'hayabusa', name:'하야부사2', tag:'REAL · JAXA', icon:'🪐', hull:buildProbeHull,
+      colors:{body:0xe0d8c0, accent:0x4de3d1}, desc:'소행성 샘플을 채취해 지구로 귀환한 소형 탐사선.',
+      stats:{speed:1.0, turn:1.25, shield:0.75} },
+    { id:'shuttle', name:'스페이스 셔틀', tag:'REAL · NASA 1981', icon:'🚀', hull:buildShuttleHull,
+      colors:{body:0xe7ecf7, accent:0x4de3d1}, desc:'재사용 가능한 궤도선. 튼튼하지만 선회는 둔하다.',
+      stats:{speed:0.9, turn:0.75, shield:1.3} },
+    { id:'falcon9', name:'팰컨 9', tag:'REAL · SpaceX', icon:'🛰️', hull:buildRocketHull,
+      colors:{body:0xe7ecf7, accent:0xff7a45}, desc:'재사용 1단 로켓. 직진 가속은 강하나 기동성은 낮다.',
+      stats:{speed:1.25, turn:0.7, shield:0.9} },
+    { id:'interceptor', name:'인터셉터 Mk.II', tag:'ORIGINAL DESIGN', icon:'⚡', hull:buildFighterHull,
+      colors:{body:0xd7dbe6, accent:0x4de3d1}, desc:'균형 잡힌 오리지널 요격기. VOID RUNNER의 기본 함선.',
+      stats:{speed:1.2, turn:1.2, shield:0.85} },
+    { id:'nomad', name:'노마드 화물선', tag:'ORIGINAL DESIGN', icon:'📦', hull:buildCargoHull,
+      colors:{body:0x8a7a5a, accent:0xffb37a}, desc:'느리지만 장갑이 두꺼운 대형 화물 수송선.',
+      stats:{speed:0.8, turn:0.65, shield:1.5} },
+    { id:'shadowwalk', name:'섀도우워크', tag:'ORIGINAL DESIGN', icon:'🗡️', hull:buildStealthHull,
+      colors:{body:0x14161f, accent:0x8a4de3}, desc:'납작한 스텔스 동체. 매우 민첩하지만 장갑이 약하다.',
+      stats:{speed:1.15, turn:1.35, shield:0.7} },
+    { id:'oracle', name:'오라클 익스플로러', tag:'ORIGINAL DESIGN', icon:'🔭', hull:buildExplorerHull,
+      colors:{body:0x2f4f7f, accent:0x4de3d1}, desc:'대형 관측돔과 패널을 갖춘 심우주 탐사함.',
+      stats:{speed:0.95, turn:0.9, shield:1.25} }
+  ];
+
+  function getShipDef(id){ return SHIP_CATALOG.find(s=>s.id===id) || SHIP_CATALOG[6]; }
+
+  function applyShipDesign(id){
+    const def = getShipDef(id);
+    // 기존 선체 지오메트리/머티리얼 정리 (교체 시 메모리 누수 방지)
+    while(hullGroup.children.length){
+      const child = hullGroup.children.pop();
+      hullGroup.remove(child);
+      if(child.geometry) child.geometry.dispose();
+      if(child.material) child.material.dispose();
+    }
+    def.hull(hullGroup, def.colors);
+    state.shipId = def.id;
+    state.speedMult = def.stats.speed;
+    state.turnMult = def.stats.turn;
+    state.shieldMult = def.stats.shield;
+    localStorage.setItem('voidRunnerShip', def.id);
+    const label = document.getElementById('currentShipLabel');
+    if(label) label.textContent = def.name;
+  }
+
+  /* ============ OBSTACLE / COLLECTIBLE FIELDS ============ */
+  const asteroidGeoPool = [
+    new THREE.IcosahedronGeometry(1,0),
+    new THREE.IcosahedronGeometry(1,1),
+    new THREE.DodecahedronGeometry(1,0)
+  ];
+  const asteroidMat = new THREE.MeshStandardMaterial({ color:0x6b6458, roughness:0.95, metalness:0.05, flatShading:true });
+  const crystalGeo = new THREE.OctahedronGeometry(1,0);
+  const crystalMat = new THREE.MeshStandardMaterial({ color:0x4de3d1, emissive:0x2fbfae, emissiveIntensity:1.1, metalness:0.3, roughness:0.2 });
+
+  let asteroids = [];
+  let crystals = [];
+
+  /* ============ 최적화: 거리 기반 컬링 판정 ============
+     매 프레임 모든 오브젝트에 회전/애니메이션 연산과 드로우콜을 쓰는 대신,
+     함선 기준으로 "뒤로 지나간 것"은 완전히 제거하고, "사거리 밖"인 것은
+     visible=false 로 렌더링만 건너뛰게 한다(배열에는 남겨 다음 프레임에 재판정).
+     비용이 큰 프러스텀 컬링 계산 없이도 화면 밖 드로우콜을 대부분 걷어낼 수 있다.
+  */
+  const CULL_BEHIND_DIST = -22;   // 함선보다 이만큼 뒤처지면 완전 제거
+  const CULL_RENDER_DIST = 130;   // 이 거리보다 멀면 렌더링만 스킵(연산도 최소화)
+  function classifyForCulling(objPos, shipPos, forward){
+    const dx = objPos.x - shipPos.x, dy = objPos.y - shipPos.y, dz = objPos.z - shipPos.z;
+    const distFwd = dx*forward.x + dy*forward.y + dz*forward.z;
+    if(distFwd < CULL_BEHIND_DIST) return 'remove';
+    const distSq = dx*dx + dy*dy + dz*dz;
+    if(distSq > CULL_RENDER_DIST*CULL_RENDER_DIST) return 'cull';
+    return 'active';
+  }
+
+  function randSpawnOffset(forward, radiusMin, radiusMax){
+    const worldUp = new THREE.Vector3(0,1,0);
+    let right = new THREE.Vector3().crossVectors(forward, worldUp);
+    if(right.lengthSq() < 0.0001) right.set(1,0,0);
+    right.normalize();
+    const up = new THREE.Vector3().crossVectors(right, forward).normalize();
+    const ang = Math.random()*Math.PI*2;
+    const rad = radiusMin + Math.random()*(radiusMax-radiusMin);
+    return right.multiplyScalar(Math.cos(ang)*rad).add(up.multiplyScalar(Math.sin(ang)*rad));
+  }
+
+  function spawnAsteroid(forward, distAhead){
+    if(asteroids.length > 40) return; // 최적화: 동시 활성 개체 수 상한
+    const geo = asteroidGeoPool[Math.floor(Math.random()*asteroidGeoPool.length)];
+    const scale = 1.0 + Math.random()*2.4;
+    const mesh = new THREE.Mesh(geo, asteroidMat);
+    mesh.scale.setScalar(scale);
+    const offset = randSpawnOffset(forward, 4, 34);
+    mesh.position.copy(ship.position).add(forward.clone().multiplyScalar(distAhead)).add(offset);
+    mesh.rotation.set(Math.random()*6,Math.random()*6,Math.random()*6);
+    mesh.userData.spin = new THREE.Vector3((Math.random()-0.5)*0.6,(Math.random()-0.5)*0.6,(Math.random()-0.5)*0.6);
+    mesh.userData.radius = scale*0.95;
+    // 천체 상호작용: 크기(질량)에 비례한 내구도를 부여 — 단순 장식이 아닌 물리 충돌 오브젝트
+    mesh.userData.mass = scale;
+    mesh.userData.durability = 30 + scale*28;
+    mesh.userData.maxDurability = mesh.userData.durability;
+    scene.add(mesh);
+    asteroids.push(mesh);
+  }
+
+  /* ---- 자원 조각(Scrap) : 소행성이 파괴되면 이 조각들이 흩어지며 수집 가능해진다 ---- */
+  const scrapGeo = new THREE.BoxGeometry(0.4,0.4,0.4);
+  const scrapMat = new THREE.MeshStandardMaterial({ color:0xffb37a, emissive:0xb8471f, emissiveIntensity:0.7, metalness:0.6, roughness:0.4 });
+  let scrapChunks = [];
+
+  function shatterAsteroid(asteroid){
+    const n = 1 + Math.floor(Math.random()*2); // 주황색 조각 과밀 방지: 1~2개만 생성
+    for(let i=0;i<n;i++){
+      const chunk = new THREE.Mesh(scrapGeo, scrapMat);
+      chunk.position.copy(asteroid.position);
+      chunk.scale.setScalar(0.5 + Math.random()*0.6);
+      const dir = new THREE.Vector3((Math.random()-0.5),(Math.random()-0.5),(Math.random()-0.5)).normalize();
+      chunk.userData.vel = dir.multiplyScalar(2 + Math.random()*3);
+      chunk.userData.spin = new THREE.Vector3(Math.random()*3, Math.random()*3, Math.random()*3);
+      chunk.userData.life = 8;
+      chunk.userData.radius = 1.0;
+      scene.add(chunk);
+      scrapChunks.push(chunk);
+    }
+  }
+
+  function spawnCrystal(forward, distAhead){
+    const mesh = new THREE.Mesh(crystalGeo, crystalMat);
+    const scale = 0.8 + Math.random()*0.5;
+    mesh.scale.setScalar(scale);
+    const offset = randSpawnOffset(forward, 2, 26);
+    mesh.position.copy(ship.position).add(forward.clone().multiplyScalar(distAhead)).add(offset);
+    mesh.userData.radius = scale*1.1;
+    mesh.userData.bobPhase = Math.random()*Math.PI*2;
+    mesh.userData.baseY = mesh.position.y;
+    scene.add(mesh);
+    crystals.push(mesh);
+  }
+
+  /* ============ 함선 잔해 & 폐허 정거장 ============
+     소행성과 달리 위협이 아니라 "청소 대상" — 닿으면 실드 피해 없이 즉시 회수되며
+     스크랩/데이터 조각/합금을 한꺼번에 지급한다 (환경 복원이라는 세계관과 맞닿아 있음). */
+  const wreckMatHull = new THREE.MeshStandardMaterial({ color:0x6a7080, metalness:0.7, roughness:0.5, flatShading:true });
+  const wreckMatPanel = new THREE.MeshStandardMaterial({ color:0x3a4560, metalness:0.5, roughness:0.6, emissive:0x18203a, emissiveIntensity:0.4 });
+  let wrecks = [];
+
+  function makeShipWreck(){ // 부서진 함선 잔해: 쪼개진 동체 조각들
+    const g = new THREE.Group();
+    const core = new THREE.Mesh(new THREE.CylinderGeometry(0.5,0.7,2.4,7), wreckMatHull);
+    core.rotation.z = 0.6; core.rotation.x = 0.3;
+    g.add(core);
+    const shard = new THREE.Mesh(new THREE.ConeGeometry(0.4,1.2,6), wreckMatHull);
+    shard.position.set(0.9,0.4,-0.6); shard.rotation.z = -1.1;
+    g.add(shard);
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(1.4,0.05,0.7), wreckMatPanel);
+    panel.position.set(-0.7,-0.3,0.4); panel.rotation.z = 0.4;
+    g.add(panel);
+    g.userData.radius = 2.0;
+    g.userData.reward = 'ship';
+    return g;
+  }
+  function makeStationWreck(){ // 폐허가 된 정거장: 링 구조물 + 도킹 모듈
+    const g = new THREE.Group();
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.6, 0.18, 8, 20), wreckMatHull);
+    g.add(ring);
+    const hub = new THREE.Mesh(new THREE.SphereGeometry(0.5,12,12), wreckMatPanel);
+    g.add(hub);
+    const strutGeo = new THREE.CylinderGeometry(0.05,0.05,1.6,6);
+    for(let i=0;i<3;i++){
+      const strut = new THREE.Mesh(strutGeo, wreckMatHull);
+      const ang = (Math.PI*2/3)*i;
+      strut.position.set(Math.cos(ang)*0.8, Math.sin(ang)*0.8, 0);
+      strut.rotation.z = ang + Math.PI/2;
+      g.add(strut);
+    }
+    g.userData.radius = 2.4;
+    g.userData.reward = 'station';
+    return g;
+  }
+  function spawnWreck(forward, distAhead){
+    const g = (Math.random() < 0.5) ? makeShipWreck() : makeStationWreck();
+    const offset = randSpawnOffset(forward, 5, 30);
+    g.position.copy(ship.position).add(forward.clone().multiplyScalar(distAhead)).add(offset);
+    g.userData.spin = new THREE.Vector3((Math.random()-0.5)*0.3,(Math.random()-0.5)*0.3,(Math.random()-0.5)*0.3);
+    scene.add(g);
+    wrecks.push(g);
+  }
+  function collectWreck(w){
+    // 정거장 잔해가 함선 잔해보다 조금 더 풍족한 보상을 준다
+    const big = w.userData.reward === 'station';
+    Inventory.addRawScrap(big ? 12 : 8);
+    if(Math.random() < (big?0.55:0.3)) Inventory.addDataCore(1);
+    if(Math.random() < (big?0.35:0.15)) Inventory.addRefinedAlloy(1);
+    showToast(big ? '폐허 정거장 회수 완료 — 부품 확보' : '함선 잔해 회수 완료 — 부품 확보');
+  }
+
+  /* ============ 외계 조우(First Contact) 오브젝트 ============
+     교신 10회 누적마다 항로 위에 등장하는 특별한 개체. 종류마다 형태·재질·움직임이 달라
+     서로 다른 외계 존재의 특징이 드러나도록 했다. 닿으면 보상을 주고 사라진다. */
+  let aliens = [];
+
+  function makeAlienCrystal(){ // 결정체 지성체: 날카로운 다면체 군집이 서로 다른 축으로 회전
+    const g = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color:0x4de3d1, emissive:0x2fbfae, emissiveIntensity:1.0, metalness:0.4, roughness:0.1, flatShading:true });
+    const shards = [];
+    for(let i=0;i<6;i++){
+      const s = new THREE.Mesh(new THREE.OctahedronGeometry(0.6 + Math.random()*0.7, 0), mat);
+      const ang = (Math.PI*2/6)*i;
+      s.position.set(Math.cos(ang)*1.6, Math.sin(ang*1.7)*0.8, Math.sin(ang)*1.6);
+      s.userData.spin = new THREE.Vector3(Math.random()*2, Math.random()*2, Math.random()*2);
+      g.add(s); shards.push(s);
+    }
+    g.add(new THREE.PointLight(0x4de3d1, 2.4, 50));
+    g.userData.radius = 3.2;
+    g.userData.tick = (dt)=>{ shards.forEach(s=>{ s.rotation.x+=s.userData.spin.x*dt; s.rotation.y+=s.userData.spin.y*dt; }); g.rotation.y += dt*0.15; };
+    return g;
+  }
+  function makeAlienOrganic(){ // 유기체 촉수형: 중심 구체에서 곡선 촉수가 물결치듯 움직임
+    const g = new THREE.Group();
+    const coreMat = new THREE.MeshStandardMaterial({ color:0xff7a45, emissive:0xb8471f, emissiveIntensity:0.8, metalness:0.1, roughness:0.3 });
+    const core = new THREE.Mesh(new THREE.SphereGeometry(1.1, 16, 16), coreMat);
+    g.add(core);
+    const tentacleMat = new THREE.MeshStandardMaterial({ color:0xd8506a, emissive:0x7a1f30, emissiveIntensity:0.6, metalness:0.1, roughness:0.4 });
+    const tentacles = [];
+    for(let i=0;i<5;i++){
+      const t = new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.03,2.2,7), tentacleMat);
+      const ang = (Math.PI*2/5)*i;
+      t.position.set(Math.cos(ang)*1.1, 0, Math.sin(ang)*1.1);
+      t.rotation.z = Math.cos(ang)*0.6; t.rotation.x = Math.sin(ang)*0.6;
+      t.userData.phase = Math.random()*Math.PI*2;
+      g.add(t); tentacles.push(t);
+    }
+    g.add(new THREE.PointLight(0xff7a45, 2.0, 46));
+    g.userData.radius = 3.0;
+    g.userData.tick = (dt,t)=>{ tentacles.forEach(tn=>{ tn.rotation.x = Math.sin(t*2+tn.userData.phase)*0.5; }); g.rotation.y += dt*0.1; };
+    return g;
+  }
+  function makeAlienGeometric(){ // 기하학적 다면체 지성체: 서로 다른 정다면체가 중첩되어 반대로 회전
+    const g = new THREE.Group();
+    const mat1 = new THREE.MeshStandardMaterial({ color:0xffe6a8, emissive:0x8a5a2f, emissiveIntensity:0.6, metalness:0.6, roughness:0.2, wireframe:false });
+    const mat2 = new THREE.MeshBasicMaterial({ color:0x8a4de3, wireframe:true, transparent:true, opacity:0.8, fog:false });
+    const inner = new THREE.Mesh(new THREE.TetrahedronGeometry(1.0,0), mat1);
+    const outer = new THREE.Mesh(new THREE.DodecahedronGeometry(2.0,0), mat2);
+    g.add(inner, outer);
+    g.add(new THREE.PointLight(0xffe6a8, 2.0, 48));
+    g.userData.radius = 3.2;
+    g.userData.tick = (dt)=>{ inner.rotation.x+=dt*1.2; inner.rotation.y+=dt*0.8; outer.rotation.y-=dt*0.4; outer.rotation.x-=dt*0.25; };
+    return g;
+  }
+  function makeAlienEnergy(){ // 에너지체: 고정된 형체 없이 여러 겹의 링이 각기 다른 속도로 소용돌이침
+    const g = new THREE.Group();
+    const rings = [];
+    for(let i=0;i<4;i++){
+      const r = 0.8 + i*0.55;
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(r, 0.05, 8, 40),
+        new THREE.MeshBasicMaterial({ color:0x4de3d1, transparent:true, opacity:0.75 - i*0.12, blending:THREE.AdditiveBlending, fog:false })
+      );
+      ring.rotation.x = Math.random()*Math.PI;
+      ring.rotation.y = Math.random()*Math.PI;
+      ring.userData.spin = (Math.random()>0.5?1:-1) * (0.6 + i*0.35);
+      g.add(ring); rings.push(ring);
+    }
+    g.add(new THREE.PointLight(0x4de3d1, 2.8, 55));
+    g.userData.radius = 3.0;
+    g.userData.tick = (dt)=>{ rings.forEach(r=>{ r.rotation.z += r.userData.spin*dt; }); };
+    return g;
+  }
+  function makeAlienSwarm(){ // 기계 군집체(하이브마인드): 작은 큐브들이 중심 코어 주위를 궤도 운동
+    const g = new THREE.Group();
+    const coreMat = new THREE.MeshStandardMaterial({ color:0xe7ecf7, emissive:0x4de3d1, emissiveIntensity:0.7, metalness:0.8, roughness:0.2 });
+    const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.6,0), coreMat);
+    g.add(core);
+    const cubeMat = new THREE.MeshStandardMaterial({ color:0x8a8fa8, metalness:0.7, roughness:0.3, emissive:0x2a2f45, emissiveIntensity:0.4 });
+    const orbiters = [];
+    for(let i=0;i<10;i++){
+      const cube = new THREE.Mesh(new THREE.BoxGeometry(0.22,0.22,0.22), cubeMat);
+      orbiters.push({ mesh:cube, radius:1.6+Math.random()*1.2, speed:0.6+Math.random()*1.0, phase:Math.random()*Math.PI*2, tilt:Math.random()*Math.PI });
+      g.add(cube);
+    }
+    g.add(new THREE.PointLight(0x4de3d1, 2.0, 45));
+    g.userData.radius = 3.4;
+    g.userData.tick = (dt,t)=>{
+      orbiters.forEach(o=>{
+        const ang = t*o.speed + o.phase;
+        o.mesh.position.set(Math.cos(ang)*o.radius, Math.sin(ang*0.7)*o.radius*0.4, Math.sin(ang)*o.radius*Math.cos(o.tilt));
+      });
+      core.rotation.y += dt*0.6;
+    };
+    return g;
+  }
+
+  const ALIEN_ARCHETYPES = [
+    { build:makeAlienCrystal,   name:'결정체 지성체 크리스탈린' },
+    { build:makeAlienOrganic,   name:'유기 생명체 (촉수형)' },
+    { build:makeAlienGeometric, name:'기하학적 다면체 지성체' },
+    { build:makeAlienEnergy,    name:'비정형 에너지체' },
+    { build:makeAlienSwarm,     name:'기계 군집 하이브마인드' }
+  ];
+
+  function spawnAlienEncounter(forward){
+    const archetype = ALIEN_ARCHETYPES[Math.floor(Math.random()*ALIEN_ARCHETYPES.length)];
+    const g = archetype.build();
+    g.userData.speciesName = archetype.name;
+    const offset = randSpawnOffset(forward, 4, 16); // 놓치지 않도록 경로 가까이 배치
+    g.position.copy(ship.position).add(forward.clone().multiplyScalar(140)).add(offset);
+    scene.add(g);
+    aliens.push(g);
+    return archetype.name;
+  }
+  function collectAlien(a){
+    Inventory.addDataCore(3);
+    Inventory.addRefinedAlloy(3);
+    showToast(`🛸 ${a.userData.speciesName}와(과) 실제로 마주쳤습니다 — 데이터 조각 +3, 합금 +3`);
+  }
+
+  /* ============ 환경 변수: 블랙홀 위험 지대 ============
+     사건의 지평선(event horizon)을 중심으로 중력 영향권(influence radius)을 정의.
+     함선이 영향권에 들어오면:
+       1) 거리에 반비례(제곱 감쇠)하는 인력이 함선을 블랙홀 쪽으로 당긴다
+       2) 중력 가속으로 함선 속도가 상승한다
+       3) 카메라에 근접도에 비례한 스크린 쉐이크가 걸린다
+       4) 사건의 지평선에 너무 가까워지면 지속 피해를 입는다
+  */
+  let blackHoles = [];
+  function makeBlackHole(){
+    const group = new THREE.Group();
+    const horizon = new THREE.Mesh(
+      new THREE.SphereGeometry(6, 32, 32),
+      new THREE.MeshBasicMaterial({ color:0x000000, fog:false })
+    );
+    group.add(horizon);
+    // 강착원반(accretion disk) — 빛이 빨려들어가는 링
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(8, 22, 64),
+      new THREE.MeshBasicMaterial({ color:0xff7a45, side:THREE.DoubleSide, transparent:true, opacity:0.55, blending:THREE.AdditiveBlending, fog:false })
+    );
+    ring.rotation.x = Math.PI/2.2;
+    group.add(ring);
+    const glow = new THREE.PointLight(0x8a4de3, 2.2, 60);
+    group.add(glow);
+    group.userData.eventHorizon = 6;
+    group.userData.influenceRadius = 95;
+    group.userData.ringMesh = ring;
+    return group;
+  }
+  function spawnBlackHole(forward, distAhead){
+    const bh = makeBlackHole();
+    const offset = randSpawnOffset(forward, 20, 55);
+    bh.position.copy(ship.position).add(forward.clone().multiplyScalar(distAhead)).add(offset);
+    scene.add(bh);
+    blackHoles.push(bh);
+  }
+
+  /* ============ 웜홀: 다른 은하로 이동하는 통로 ============
+     충돌 시 travelThroughWormhole()을 호출해 현재 구역(ZONES) 인덱스를 다음으로 넘기고,
+     안개/조명/성운 색상과 행성군을 새 팔레트로 교체한다. 점수·인벤토리·함선 상태는 유지된다. */
+  let wormholes = [];
+  function makeWormhole(){
+    const group = new THREE.Group();
+    const ring1 = new THREE.Mesh(
+      new THREE.TorusGeometry(10, 1.4, 12, 48),
+      new THREE.MeshBasicMaterial({ color:0x8a4de3, transparent:true, opacity:0.8, blending:THREE.AdditiveBlending, side:THREE.DoubleSide, fog:false })
+    );
+    const ring2 = new THREE.Mesh(
+      new THREE.TorusGeometry(7, 1.0, 12, 48),
+      new THREE.MeshBasicMaterial({ color:0x4de3d1, transparent:true, opacity:0.6, blending:THREE.AdditiveBlending, side:THREE.DoubleSide, fog:false })
+    );
+    ring2.rotation.y = Math.PI/2;
+    group.add(ring1, ring2);
+    const core = new THREE.Mesh(new THREE.SphereGeometry(5, 18, 18), new THREE.MeshBasicMaterial({ color:0x0a0020, fog:false }));
+    group.add(core);
+    const glow = new THREE.PointLight(0x8a4de3, 2.6, 70);
+    group.add(glow);
+    group.userData.radius = 9;
+    group.userData.ring1 = ring1;
+    group.userData.ring2 = ring2;
+    return group;
+  }
+  function spawnWormhole(forward, distAhead){
+    const wh = makeWormhole();
+    const offset = randSpawnOffset(forward, 6, 22); // 경로에 가깝게 배치해 자연스럽게 마주치도록
+    wh.position.copy(ship.position).add(forward.clone().multiplyScalar(distAhead)).add(offset);
+    scene.add(wh);
+    wormholes.push(wh);
+  }
+
+  const warpFlashEl = document.getElementById('warpFlash');
+  function travelThroughWormhole(){
+    currentZoneIndex = (currentZoneIndex + 1) % ZONES.length;
+    applyZone(currentZoneIndex);
+
+    warpFlashEl.style.opacity = '1';
+    setTimeout(()=>{ warpFlashEl.style.opacity = '0'; }, 480);
+
+    // 이전 구역의 필드 오브젝트 정리 (함선/점수/인벤토리는 유지)
+    asteroids.forEach(a=>scene.remove(a)); asteroids = [];
+    crystals.forEach(c=>scene.remove(c)); crystals = [];
+    scrapChunks.forEach(s=>scene.remove(s)); scrapChunks = [];
+    blackHoles.forEach(b=>scene.remove(b)); blackHoles = [];
+    wormholes.forEach(w=>scene.remove(w)); wormholes = [];
+    wrecks.forEach(w=>scene.remove(w)); wrecks = [];
+    aliens.forEach(a=>scene.remove(a)); aliens = [];
+    stars.forEach(s=>scene.remove(s)); stars = [];
+    comets.forEach(c=>scene.remove(c)); comets = [];
+    bgPlanets.forEach(p=>scene.remove(p)); bgPlanets.length = 0;
+    hideStarPopup();
+
+    const forward = new THREE.Vector3(0,0,-1).applyQuaternion(ship.quaternion).normalize();
+    spawnZonePlanets(forward, ZONES[currentZoneIndex].planetColors, 400, 4);
+    spawnZoneStars(forward, 300);
+    spawnQuasar(forward, 900 + Math.random()*400);
+
+    state.nextSpawnAt = state.distance + 40;
+    state.nextBlackHoleAt = state.distance + 320;
+    state.nextWormholeAt = state.distance + 650 + Math.random()*250;
+    state.nextWreckAt = state.distance + 150;
+    state.nextCometAt = state.distance + 80 + Math.random()*100;
+
+    showToast(`WARP // [${ZONES[currentZoneIndex].scale}] ${ZONES[currentZoneIndex].name} 진입`);
+  }
+
+  function clearField(){
+    asteroids.forEach(a=>scene.remove(a));
+    crystals.forEach(c=>scene.remove(c));
+    scrapChunks.forEach(s=>scene.remove(s));
+    blackHoles.forEach(b=>scene.remove(b));
+    wormholes.forEach(w=>scene.remove(w));
+    wrecks.forEach(w=>scene.remove(w));
+    stars.forEach(s=>scene.remove(s));
+    aliens.forEach(a=>scene.remove(a));
+    comets.forEach(c=>scene.remove(c));
+    bgPlanets.forEach(p=>scene.remove(p));
+    asteroids = [];
+    crystals = [];
+    scrapChunks = [];
+    blackHoles = [];
+    wormholes = [];
+    wrecks = [];
+    stars = [];
+    aliens = [];
+    comets = [];
+    bgPlanets.length = 0;
+  }
+
+  /* ============================================================
+     1단계: 인벤토리 시스템
+     '고철(Raw Scrap)' · '정제 합금(Refined Alloy)' · '데이터 조각(Data Core)'
+     세 가지 핵심 자원을 관리하는 오브젝트.
+     ============================================================ */
+  const Inventory = {
+    resources: { rawScrap: 0, refinedAlloy: 0, dataCore: 0 },
+    refineBuffExpiresAt: 0, // 광고 보상으로 활성화되는 '분해 효율 버프' 만료 시각
+
+    // 기능 1) 플레이어가 고철을 수거하면 인벤토리에 추가되는 함수
+    addRawScrap(amount){
+      this.resources.rawScrap += amount;
+      this._onChange();
+    },
+    addRefinedAlloy(amount){
+      this.resources.refinedAlloy += amount;
+      this._onChange();
+    },
+    addDataCore(amount){
+      this.resources.dataCore += amount;
+      this._onChange();
+    },
+
+    // 기능 2) 고철 3개를 정제 합금 1개로 변환(분해)하는 함수
+    // 광고로 얻은 '분해 효율 버프'가 활성화되어 있으면 비용이 2개로 줄어든다.
+    refineScrap(){
+      const cost = (Date.now() < this.refineBuffExpiresAt) ? 2 : 3;
+      if(this.resources.rawScrap < cost){
+        showToast('고철이 부족합니다 (' + cost + '개 필요)');
+        return false;
+      }
+      this.resources.rawScrap -= cost;
+      this.resources.refinedAlloy += 1;
+      this._onChange();
+      return true;
+    },
+
+    _onChange(){
+      if(typeof updateInventoryHUD === 'function') updateInventoryHUD();
+    }
+  };
+
+  function showToast(msg){
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(()=>{ toast.classList.remove('show'); }, 2400);
+  }
+
+  function updateInventoryHUD(){
+    const cost = (Date.now() < Inventory.refineBuffExpiresAt) ? 2 : 3;
+    document.getElementById('invScrap').textContent = Inventory.resources.rawScrap;
+    document.getElementById('invAlloy').textContent = Inventory.resources.refinedAlloy;
+    document.getElementById('invCore').textContent = Inventory.resources.dataCore;
+    const refineBtn = document.getElementById('refineBtn');
+    refineBtn.textContent = `정제하기 (고철 ${cost} → 합금 1)`;
+    refineBtn.disabled = Inventory.resources.rawScrap < cost;
+  }
+  document.getElementById('refineBtn').addEventListener('click', ()=>{
+    if(Inventory.refineScrap()) showToast('정제 합금 +1 획득');
+  });
+
+  /* ============================================================
+     3단계: 보상형 광고 시스템
+     watchAd() → '광고 시청 중...' 팝업 3초 → 보상(효율 버프 또는 합금 5개) 지급.
+     하루 최대 3회 제한은 localStorage에 (날짜, 횟수)를 저장해 구현한다.
+     ============================================================ */
+  const AD_DAILY_LIMIT = 3;
+  const AD_STORAGE_KEY = 'voidRunnerAdData';
+
+  function todayKey(){
+    return new Date().toISOString().slice(0,10); // YYYY-MM-DD
+  }
+  function getAdData(){
+    let data;
+    try{ data = JSON.parse(localStorage.getItem(AD_STORAGE_KEY)) || {}; }
+    catch(e){ data = {}; }
+    if(data.date !== todayKey()){ data = { date: todayKey(), count: 0 }; } // 날짜가 바뀌면 자동 리셋
+    return data;
+  }
+  function saveAdData(data){
+    localStorage.setItem(AD_STORAGE_KEY, JSON.stringify(data));
+  }
+
+  function updateAdButtonUI(){
+    const data = getAdData();
+    const remaining = Math.max(0, AD_DAILY_LIMIT - data.count);
+    const adBtn = document.getElementById('adBtn');
+    adBtn.textContent = `📺 광고 보고 보상받기 (${remaining}/${AD_DAILY_LIMIT})`;
+    adBtn.disabled = remaining <= 0;
+  }
+
+  function showAdPopup(onComplete){
+    const popup = document.getElementById('adPopup');
+    const dots = document.getElementById('adDots');
+    popup.classList.remove('hidden');
+    let dotCount = 0;
+    const dotTimer = setInterval(()=>{
+      dotCount = (dotCount+1)%4;
+      dots.textContent = '.'.repeat(dotCount || 1);
+    }, 350);
+    setTimeout(()=>{
+      clearInterval(dotTimer);
+      popup.classList.add('hidden');
+      onComplete();
+    }, 3000); // 광고 시청 3초
+  }
+
+  function grantAdReward(){
+    if(Math.random() < 0.5){
+      // 보상 A: 분해 효율 버프 (2분간 정제 비용 3→2로 감소)
+      Inventory.refineBuffExpiresAt = Date.now() + 2*60*1000;
+      updateInventoryHUD();
+      showToast('보상 획득: 분해 효율 버프 (2분간 정제 비용 감소!)');
+    } else {
+      // 보상 B: 보너스 합금 5개 즉시 지급
+      Inventory.addRefinedAlloy(5);
+      showToast('보상 획득: 정제 합금 +5');
+    }
+  }
+
+  function watchAd(){
+    const data = getAdData();
+    if(data.count >= AD_DAILY_LIMIT){
+      showToast('오늘 시청 가능한 광고를 모두 시청했습니다. 내일 다시 시도해주세요.');
+      return;
+    }
+    showAdPopup(()=>{
+      data.count += 1;
+      saveAdData(data);
+      grantAdReward();
+      updateAdButtonUI();
+    });
+  }
+  document.getElementById('adBtn').addEventListener('click', watchAd);
+
+  /* ============================================================
+     4단계: 항성 근접 정보 팝업 + 5단계: 식민화 & 식민지 리스폰 (누적 가능, 각 1회용)
+     ============================================================ */
+  const starPopupEl = document.getElementById('starPopup');
+  const starPopupName = document.getElementById('starPopupName');
+  const starPopupFact = document.getElementById('starPopupFact');
+  const colonizeBtn = document.getElementById('colonizeBtn');
+  const colonyRespawnContainer = document.getElementById('colonyRespawnContainer');
+  let nearestStar = null;
+
+  function findColony(name, zoneIndex){
+    return state.colonies.find(c => c.name === name && c.zoneIndex === zoneIndex);
+  }
+  function saveColonies(){
+    localStorage.setItem('voidRunnerColonies', JSON.stringify(state.colonies));
+  }
+
+  function showStarPopup(starMesh){
+    nearestStar = starMesh;
+    const info = starMesh.userData.info;
+    starPopupName.textContent = info.name;
+    starPopupFact.textContent = info.fact;
+    if(info.colonizable){
+      const existing = findColony(info.name, currentZoneIndex);
+      colonizeBtn.style.display = 'block';
+      if(!existing){
+        colonizeBtn.textContent = '식민화 (합금 10 소모)';
+        colonizeBtn.disabled = false;
+      } else if(!existing.used){
+        colonizeBtn.textContent = '✅ 식민화 완료 (리스폰 대기 중)';
+        colonizeBtn.disabled = true;
+      } else {
+        colonizeBtn.textContent = '✅ 식민화 완료 (리스폰 이미 사용)';
+        colonizeBtn.disabled = true;
+      }
+    } else {
+      colonizeBtn.style.display = 'none';
+    }
+    starPopupEl.classList.add('show');
+  }
+  function hideStarPopup(){
+    nearestStar = null;
+    starPopupEl.classList.remove('show');
+  }
+
+  function colonizeCurrentStar(){
+    if(!nearestStar) return;
+    const info = nearestStar.userData.info;
+    if(findColony(info.name, currentZoneIndex)){ return; } // 이미 식민화됨
+    if(Inventory.resources.refinedAlloy < 10){
+      showToast('합금이 부족합니다 (10개 필요)');
+      return;
+    }
+    Inventory.resources.refinedAlloy -= 10;
+    updateInventoryHUD();
+    // 1) 식민화 가능한 별/행성은 누적된다 — 배열에 계속 추가
+    state.colonies.push({ name: info.name, zoneIndex: currentZoneIndex, used: false });
+    saveColonies();
+    showToast(`🛰 ${info.name} 식민화 완료 — 이제 이곳으로 1회 귀환할 수 있습니다`);
+    updateColonyButton();
+    showStarPopup(nearestStar); // 버튼 상태 즉시 갱신
+  }
+  colonizeBtn.addEventListener('click', colonizeCurrentStar);
+
+  // 리스폰 가능한(아직 미사용) 식민지 수만큼 버튼을 실드 표시칸 위에 쌓아서 보여준다
+  function updateColonyButton(){
+    colonyRespawnContainer.innerHTML = '';
+    state.colonies.filter(c => !c.used).forEach(col=>{
+      const btn = document.createElement('button');
+      btn.className = 'colony-respawn-btn';
+      btn.innerHTML = `🛰 ${col.name}(으)로 귀환`;
+      btn.addEventListener('click', ()=>{
+        if(!state.running || col.used) return;
+        // 2) 식민지 리스폰은 해당 별/행성당 1회만 — 사용 즉시 소모 처리
+        col.used = true;
+        saveColonies();
+        state.shield = 100;
+        state.invuln = 2.5;
+        updateColonyButton();
+        showToast(`🛰 ${col.name} 식민지에서 긴급 보급 — 실드 완전 복구 (이 거점은 재사용 불가)`);
+      });
+      colonyRespawnContainer.appendChild(btn);
+    });
+  }
+
+  /* ============================================================
+     3단계: 외계 통신 시스템
+     비행 중 간간이 외계 신호가 도착 → 답신 선택 → 교신 누적 10회 이상이면 "조우" 이벤트 발생
+     ============================================================ */
+  const ALIEN_MESSAGES = [
+    { sender:'??? // 미확인 발신원', text:'...신호를 감지했다... 당신들도... 청소하는 자들인가?' },
+    { sender:'실타래 군체 (하이브마인드)', text:'우리는 다수이자 하나. 당신의 개별성이 흥미롭다.' },
+    { sender:'심연의 관측자', text:'오래된 항로를 지나는군. 그곳엔 우리 조상들의 잔해가 잠들어 있다.' },
+    { sender:'결정체 지성체 크리스탈린', text:'빛의 파장으로 대화하자. 당신의 응답 주파수를 기다린다.' },
+    { sender:'유랑하는 상인단', text:'교역을 원하는가? 아니면 그저... 지나가는 나그네인가.' },
+    { sender:'궤도 수호자', text:'이 구역은 우리의 영역이었다. 지금은... 아무도 지키지 않지만.' }
+  ];
+  const ALIEN_REPLIES = [
+    { label:'우호적으로 응답한다', tone:'friendly' },
+    { label:'경계하며 신중히 응답한다', tone:'cautious' },
+    { label:'호기심을 담아 질문한다', tone:'curious' }
+  ];
+  const CONTACT_KEY = 'voidRunnerContactCount';
+
+  const commPanel = document.getElementById('commPanel');
+  const commSender = document.getElementById('commSender');
+  const commMessage = document.getElementById('commMessage');
+  const commReplies = document.getElementById('commReplies');
+  const commProgress = document.getElementById('commProgress');
+  let commOpen = false;
+
+  function openAlienComm(){
+    if(commOpen) return;
+    commOpen = true;
+    const msg = ALIEN_MESSAGES[Math.floor(Math.random()*ALIEN_MESSAGES.length)];
+    commSender.textContent = msg.sender;
+    commMessage.textContent = msg.text;
+    commProgress.textContent = `교신 ${state.contactCount}/${state.nextEncounterAt}`;
+    commReplies.innerHTML = '';
+    ALIEN_REPLIES.forEach(r=>{
+      const btn = document.createElement('button');
+      btn.className = 'comm-reply-btn';
+      btn.textContent = r.label;
+      btn.addEventListener('click', ()=>replyToAlien());
+      commReplies.appendChild(btn);
+    });
+    commPanel.classList.add('show');
+  }
+  function closeAlienComm(){
+    commOpen = false;
+    commPanel.classList.remove('show');
+  }
+  function replyToAlien(){
+    state.contactCount += 1;
+    localStorage.setItem(CONTACT_KEY, String(state.contactCount));
+    closeAlienComm();
+    if(state.contactCount >= state.nextEncounterAt){
+      triggerAlienEncounter();
+      state.nextEncounterAt += 10;
+    } else {
+      showToast(`📡 답신 전송 완료 (교신 ${state.contactCount}/${state.nextEncounterAt})`);
+    }
+  }
+  function triggerAlienEncounter(){
+    // 3) 교신이 10회 이상 누적되면 마주하게 되는 조우 이벤트 — 현재 항로 위에 특별한 개체를 스폰
+    let speciesName = '미지의 존재';
+    if(typeof spawnAlienEncounter === 'function' && state.running){
+      speciesName = spawnAlienEncounter(new THREE.Vector3(0,0,-1).applyQuaternion(ship.quaternion).normalize());
+    }
+    showToast(`✨ 첫 조우! ${speciesName}이(가) 당신 앞에 실체를 드러냅니다 (누적 교신 ${state.contactCount}회)`);
+  }
+
+  /* ============ 홈으로 이동 ============ */
+  const homeBtn = document.getElementById('homeBtn');
+  function goHome(){
+    state.running = false;
+    hud.classList.remove('visible');
+    document.getElementById('inventoryPanel').classList.remove('visible');
+    homeBtn.classList.remove('visible');
+    closeAlienComm();
+    hideStarPopup();
+    document.getElementById('overScreen').classList.add('hidden');
+    startScreenEl().classList.remove('hidden');
+  }
+  function startScreenEl(){ return document.getElementById('startScreen'); }
+  homeBtn.addEventListener('click', goHome);
+
+  /* ============ INPUT ============ */
+  const input = { x:0, y:0, boost:false };
+  const keys = {};
+  window.addEventListener('keydown', e=>{
+    keys[e.code] = true;
+    if(e.code === 'ShiftLeft' || e.code === 'ShiftRight') input.boost = true;
+  });
+  window.addEventListener('keyup', e=>{
+    keys[e.code] = false;
+    if(e.code === 'ShiftLeft' || e.code === 'ShiftRight') input.boost = false;
+  });
+
+  function updateKeyboardInput(){
+    let x = 0, y = 0;
+    if(keys['KeyA']||keys['ArrowLeft']) x -= 1;
+    if(keys['KeyD']||keys['ArrowRight']) x += 1;
+    if(keys['KeyW']||keys['ArrowUp']) y -= 1;
+    if(keys['KeyS']||keys['ArrowDown']) y += 1;
+    return {x,y};
+  }
+
+  /* touch controls */
+  const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+  const touchControls = document.getElementById('touch-controls');
+  if(isTouch) touchControls.classList.add('active');
+
+  const stickZone = document.getElementById('stick-zone');
+  const stickKnob = document.getElementById('stick-knob');
+  let stickActive = false, stickTouchId = null;
+  const stickState = {x:0,y:0};
+
+  function stickCenter(){
+    const r = stickZone.getBoundingClientRect();
+    return { cx: r.left + r.width/2, cy: r.top + r.height/2, radius: r.width/2 };
+  }
+  function handleStickMove(clientX, clientY){
+    const {cx,cy,radius} = stickCenter();
+    let dx = clientX - cx, dy = clientY - cy;
+    const dist = Math.min(Math.hypot(dx,dy), radius);
+    const ang = Math.atan2(dy,dx);
+    dx = Math.cos(ang)*dist; dy = Math.sin(ang)*dist;
+    stickKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+    stickState.x = dx/radius;
+    stickState.y = dy/radius;
+  }
+  function resetStick(){
+    stickKnob.style.transform = 'translate(-50%,-50%)';
+    stickState.x = 0; stickState.y = 0;
+  }
+  stickZone.addEventListener('touchstart', e=>{
+    e.preventDefault();
+    const t = e.changedTouches[0];
+    stickTouchId = t.identifier;
+    stickActive = true;
+    handleStickMove(t.clientX, t.clientY);
+  }, {passive:false});
+  window.addEventListener('touchmove', e=>{
+    if(!stickActive) return;
+    for(const t of e.changedTouches){
+      if(t.identifier === stickTouchId){ handleStickMove(t.clientX, t.clientY); e.preventDefault(); }
+    }
+  }, {passive:false});
+  window.addEventListener('touchend', e=>{
+    for(const t of e.changedTouches){
+      if(t.identifier === stickTouchId){ stickActive=false; stickTouchId=null; resetStick(); }
+    }
+  });
+
+  const boostBtn = document.getElementById('boost-btn');
+  function boostOn(e){ e.preventDefault(); input.boost = true; boostBtn.classList.add('pressed'); }
+  function boostOff(e){ e.preventDefault(); input.boost = false; boostBtn.classList.remove('pressed'); }
+  boostBtn.addEventListener('touchstart', boostOn, {passive:false});
+  boostBtn.addEventListener('touchend', boostOff, {passive:false});
+  boostBtn.addEventListener('mousedown', ()=>{ input.boost = true; boostBtn.classList.add('pressed'); });
+  boostBtn.addEventListener('mouseup', ()=>{ input.boost = false; boostBtn.classList.remove('pressed'); });
+
+  /* ============ GAME STATE ============ */
+  const state = {
+    running:false,
+    score:0,
+    distance:0,
+    shield:100,
+    fuel:100,
+    baseSpeed:16,
+    speed:16,
+    yaw:0, pitch:0, roll:0,
+    invuln:0,
+    nextSpawnAt: 40,
+    spawnStep: 26,
+    nextBlackHoleAt: 260,
+    nextWormholeAt: 550,
+    nextWreckAt: 130,
+    nextContactAt: 200,
+    nextCometAt: 60,
+    shipId: 'interceptor',
+    speedMult: 1, turnMult: 1, shieldMult: 1,
+    colonies: [],               // [{ name, zoneIndex, used }] — 식민화된 거점은 누적된다
+    bestScore: parseInt(localStorage.getItem('voidRunnerBest')||'0',10)
+  };
+  try{
+    const savedColonies = JSON.parse(localStorage.getItem('voidRunnerColonies'));
+    if(Array.isArray(savedColonies)) state.colonies = savedColonies;
+  }catch(e){ /* 저장된 식민지 없음 */ }
+
+  // 외계 통신 누적 교신 횟수는 세션을 넘어 계속 유지된다 (state 선언 이후에 초기화해야 함)
+  state.contactCount = parseInt(localStorage.getItem(CONTACT_KEY) || '0', 10);
+  state.nextEncounterAt = (Math.floor(state.contactCount/10)+1)*10;
+
+  const forwardVec = new THREE.Vector3(0,0,-1);
+  const camOffset = new THREE.Vector3(0, 3.2, 9.5);
+  const camTarget = new THREE.Vector3();
+  camera.position.set(0,3,9);
+
+  /* HUD refs */
+  const scoreVal = document.getElementById('scoreVal');
+  const scrapVal = document.getElementById('scrapVal');
+  const distVal = document.getElementById('distVal');
+  const shieldBar = document.getElementById('shieldBar');
+  const fuelBar = document.getElementById('fuelBar');
+  const warningFlash = document.getElementById('warningFlash');
+  const hud = document.getElementById('hud');
+
+  function resetGame(){
+    clearField();
+    ship.position.set(0,0,0);
+    state.score = 0;
+    state.distance = 0;
+    state.shield = 100;
+    state.fuel = 100;
+    state.speed = state.baseSpeed;
+    state.yaw = 0; state.pitch = 0; state.roll = 0;
+    state.invuln = 1.5;
+    state.nextSpawnAt = 40;
+    state.nextBlackHoleAt = 260;
+    state.nextWormholeAt = 550;
+    state.nextWreckAt = 130;
+    state.nextContactAt = state.distance + 200 + Math.random()*120;
+    state.nextCometAt = 60 + Math.random()*80;
+    // 새 비행은 항상 솔 항성계(시작 구역)에서 출발한다 — 인벤토리와 식민지 진행도는 초기화하지 않고 유지
+    currentZoneIndex = 0;
+    applyZone(0);
+    spawnSolarBodies(forwardVec, 500);
+    spawnZoneStars(forwardVec, 300);
+    spawnQuasar(forwardVec, 1100);
+    for(let i=0;i<6;i++){
+      spawnAsteroid(forwardVec, 60 + i*30);
+      if(i%2===0) spawnCrystal(forwardVec, 70 + i*30);
+    }
+    spawnWreck(forwardVec, 150);
+    spawnComet(forwardVec, 200);
+  }
+
+  function gameOver(){
+    state.running = false;
+    document.getElementById('finalScore').textContent = Math.floor(state.score);
+    if(state.score > state.bestScore){
+      state.bestScore = Math.floor(state.score);
+      localStorage.setItem('voidRunnerBest', String(state.bestScore));
+    }
+    document.getElementById('bestScore').textContent = state.bestScore;
+    document.getElementById('overScreen').classList.remove('hidden');
+    hud.classList.remove('visible');
+    homeBtn.classList.remove('visible');
+    closeAlienComm();
+    hideStarPopup();
+  }
+
+  /* ============ MAIN LOOP ============ */
+  const clock = new THREE.Clock();
+  const shipQuat = new THREE.Quaternion();
+  const euler = new THREE.Euler(0,0,0,'YXZ');
+
+  function animate(){
+    requestAnimationFrame(animate);
+    const dt = Math.min(clock.getDelta(), 0.05);
+    const t = clock.elapsedTime;
+
+    // idle ambient motion even before game starts
+    // 3단계 패럴랙스 레이어 갱신: 레이어별 셀 크기로 격자 스냅 → 깊이별 상대속도 차이가 저절로 생김
+    for(let li=0; li<parallaxLayers.length; li++){
+      const layer = parallaxLayers[li];
+      const c = layer.cell;
+      layer.mesh.position.set(
+        ship.position.x - (ship.position.x % c),
+        ship.position.y - (ship.position.y % c),
+        ship.position.z - (ship.position.z % c)
+      );
+    }
+    bgPlanets.forEach((p,i)=>{ p.rotation.y += dt*0.02*(i%2?1:-1); });
+    sunMesh.rotation.y += dt*0.01;
+
+    if(state.running){
+      // input
+      const kb = updateKeyboardInput();
+      const rawX = THREE.MathUtils.clamp(kb.x + stickState.x, -1, 1);
+      const rawY = THREE.MathUtils.clamp(kb.y + stickState.y, -1, 1);
+      input.x += (rawX - input.x) * Math.min(1, dt*8);
+      input.y += (rawY - input.y) * Math.min(1, dt*8);
+
+      const turnSpeed = 1.7 * state.turnMult;
+      state.yaw   -= input.x * turnSpeed * dt;
+      state.pitch -= input.y * turnSpeed * dt;
+      state.pitch = THREE.MathUtils.clamp(state.pitch, -0.95, 0.95);
+      state.roll  += (-input.x*0.7 - state.roll) * Math.min(1, dt*4);
+
+      euler.set(state.pitch, state.yaw, state.roll);
+      shipQuat.setFromEuler(euler);
+      ship.quaternion.slerp(shipQuat, Math.min(1, dt*10));
+
+      const forward = new THREE.Vector3(0,0,-1).applyQuaternion(ship.quaternion).normalize();
+
+      // boost / fuel
+      const boosting = input.boost && state.fuel > 2;
+      if(boosting){ state.fuel = Math.max(0, state.fuel - dt*32); }
+      else { state.fuel = Math.min(100, state.fuel + dt*12); }
+      const targetSpeed = (state.baseSpeed + (boosting? 20:0) + Math.min(state.distance*0.01, 10)) * state.speedMult;
+      state.speed += (targetSpeed - state.speed) * Math.min(1, dt*2.2);
+
+      ship.position.addScaledVector(forward, state.speed*dt);
+      state.distance += state.speed*dt;
+      state.score += dt*(2 + state.speed*0.15);
+
+      // 스러스터 화염: 부스트 시 길고 밝게, 순항 시 짧고 은은하게 + 미세한 떨림
+      const speedRatio = THREE.MathUtils.clamp(state.speed / (state.baseSpeed*1.6), 0.3, 1.6);
+      const flick = 0.9 + Math.random()*0.25;
+      ship.userData.thrusters.forEach(th=>{
+        const lenMult = (boosting ? 1.6 : 1.0) * speedRatio * flick;
+        th.core.scale.set(flick, lenMult, flick);
+        th.outer.scale.set(flick*0.9, lenMult*1.15, flick*0.9);
+        th.outer.material.opacity = boosting ? 0.75 : 0.4;
+        // 스러스터 끝에서 파티클을 방출해 뒤로 흩어지는 배기 트레일을 만든다
+        if(Math.random() < 0.9){
+          th.holder.getWorldPosition(worldPosTmp);
+          worldPosTmp.addScaledVector(forward, -0.4 - Math.random()*0.3);
+          emitFx(worldPosTmp, boosting ? 0xfff2c0 : 0xff9a5a, 1.2 + speedRatio, 0.4 + Math.random()*0.3);
+        }
+      });
+      updateFx(dt);
+
+      // camera follow
+      const desiredCamPos = ship.position.clone()
+        .addScaledVector(forward, -camOffset.z)
+        .addScaledVector(new THREE.Vector3(0,1,0), camOffset.y);
+      camera.position.lerp(desiredCamPos, Math.min(1, dt*4.5));
+      camTarget.copy(ship.position).addScaledVector(forward, 12);
+      camera.lookAt(camTarget);
+      camera.up.lerp(new THREE.Vector3(0,1,0).applyQuaternion(ship.quaternion), Math.min(1,dt*3)).normalize();
+
+      // spawn management
+      if(state.distance > state.nextSpawnAt){
+        state.nextSpawnAt += Math.max(14, state.spawnStep - state.distance*0.002);
+        const roll = Math.random();
+        spawnAsteroid(forward, 90 + Math.random()*40);
+        if(roll < 0.7) spawnAsteroid(forward, 110 + Math.random()*50);
+        if(roll < 0.5) spawnCrystal(forward, 100 + Math.random()*40);
+      }
+      if(state.distance > state.nextBlackHoleAt){
+        state.nextBlackHoleAt += 380 + Math.random()*220;
+        spawnBlackHole(forward, 220 + Math.random()*80);
+      }
+      if(state.distance > state.nextWormholeAt){
+        state.nextWormholeAt += 650 + Math.random()*280;
+        spawnWormhole(forward, 260 + Math.random()*70);
+      }
+      if(state.distance > state.nextWreckAt){
+        state.nextWreckAt += 90 + Math.random()*70;
+        spawnWreck(forward, 100 + Math.random()*50);
+      }
+      if(state.distance > state.nextContactAt && !commOpen){
+        state.nextContactAt = state.distance + 320 + Math.random()*260;
+        openAlienComm();
+      }
+      if(state.distance > state.nextCometAt){
+        state.nextCometAt = state.distance + 110 + Math.random()*130;
+        spawnComet(forward, 220 + Math.random()*100);
+      }
+
+      // update + collide asteroids (물리 충돌 오브젝트: 내구도가 있고, 파괴되면 자원을 남긴다)
+      for(let i=asteroids.length-1;i>=0;i--){
+        const a = asteroids[i];
+        const cls = classifyForCulling(a.position, ship.position, forward);
+        if(cls === 'remove'){ scene.remove(a); asteroids.splice(i,1); continue; }
+        a.visible = (cls === 'active');
+        if(cls === 'active'){
+          // 최적화: 화면/사거리 밖에서는 회전 연산도 건너뛴다
+          a.rotation.x += a.userData.spin.x*dt;
+          a.rotation.y += a.userData.spin.y*dt;
+          a.rotation.z += a.userData.spin.z*dt;
+        }
+        const d = a.position.distanceTo(ship.position);
+        if(state.invuln<=0 && d < a.userData.radius + 1.1){
+          // 충돌 강도는 함선 속도에 비례 — 빠르게 들이받을수록 소행성에 더 큰 손상을 준다
+          const impactForce = 16 + state.speed*1.5;
+          a.userData.durability -= impactForce;
+          state.shield -= THREE.MathUtils.clamp(9 + state.speed*0.35, 9, 32) / state.shieldMult;
+          state.invuln = 1.1;
+          warningFlash.style.opacity = '1';
+          setTimeout(()=>{ warningFlash.style.opacity='0'; }, 140);
+          // 충돌 지점에서 스파크가 사방으로 튀는 파티클 폭발 연출
+          spawnImpactSparks(ship.position.clone().addScaledVector(forward, 1.0), 0xffb37a, 22);
+
+          if(a.userData.durability <= 0){
+            // 파괴 → 자원(스크랩) 생성
+            shatterAsteroid(a);
+            spawnImpactSparks(a.position, 0xffe6a8, 16);
+            scene.remove(a); asteroids.splice(i,1);
+          } else {
+            // 아직 안 부서짐 → 넉백만 발생 (진짜 물리 충돌처럼 밀려남)
+            const knock = a.position.clone().sub(ship.position).normalize();
+            ship.position.addScaledVector(knock, 1.4);
+          }
+          if(state.shield <= 0){ state.shield = 0; gameOver(); }
+        }
+      }
+
+      // update + collect crystals (컬링 적용)
+      for(let i=crystals.length-1;i>=0;i--){
+        const c = crystals[i];
+        const cls = classifyForCulling(c.position, ship.position, forward);
+        if(cls === 'remove'){ scene.remove(c); crystals.splice(i,1); continue; }
+        c.visible = (cls === 'active');
+        if(cls === 'active'){
+          c.rotation.y += dt*1.4;
+          c.position.y = c.userData.baseY + Math.sin(t*2 + c.userData.bobPhase)*0.6;
+        }
+        const d = c.position.distanceTo(ship.position);
+        if(d < c.userData.radius + 1.2){
+          state.score += 40;
+          if(Math.random() < 0.15) Inventory.addDataCore(1); // 크리스탈 속에서 이따금 발견되는 고대 데이터 조각
+          spawnImpactSparks(c.position, 0x4de3d1, 10);
+          scene.remove(c); crystals.splice(i,1);
+        }
+      }
+
+      // update + collect scrap chunks (소행성 파괴로 생성된 자원)
+      for(let i=scrapChunks.length-1;i>=0;i--){
+        const s = scrapChunks[i];
+        s.userData.life -= dt;
+        if(s.userData.life <= 0){ scene.remove(s); scrapChunks.splice(i,1); continue; }
+        const cls = classifyForCulling(s.position, ship.position, forward);
+        if(cls === 'remove'){ scene.remove(s); scrapChunks.splice(i,1); continue; }
+        s.visible = (cls === 'active');
+        if(cls === 'active'){
+          s.position.addScaledVector(s.userData.vel, dt);
+          s.userData.vel.multiplyScalar(0.98); // drag
+          s.rotation.x += s.userData.spin.x*dt;
+          s.rotation.y += s.userData.spin.y*dt;
+        }
+        const d = s.position.distanceTo(ship.position);
+        if(d < s.userData.radius + 1.3){
+          Inventory.addRawScrap(8); // 1단계 인벤토리 시스템에 연동: 고철 수거 (조각 수 감소분 보정)
+          scene.remove(s); scrapChunks.splice(i,1);
+        }
+      }
+
+      // 환경 변수: 블랙홀 중력장 + 스크린 쉐이크
+      let shakeAmount = 0;
+      for(let i=blackHoles.length-1;i>=0;i--){
+        const bh = blackHoles[i];
+        // 블랙홀은 크고 영향권이 넓으므로 컬링 판정 거리를 별도로 완화해서 사용
+        const relFwd = bh.position.clone().sub(ship.position).dot(forward);
+        if(relFwd < -260){ scene.remove(bh); blackHoles.splice(i,1); continue; }
+
+        bh.userData.ringMesh.rotation.z += dt*0.6;
+        const rel = bh.position.clone().sub(ship.position);
+        const dist = rel.length();
+        if(dist < bh.userData.influenceRadius){
+          const pull = 1 - dist/bh.userData.influenceRadius; // 0~1, 가까울수록 큼
+          const gravityDir = rel.normalize();
+          // 제곱 감쇠: 가까워질수록 훨씬 강하게 끌어당김 + 가속
+          ship.position.addScaledVector(gravityDir, pull*pull*42*dt);
+          state.speed += pull*pull*26*dt;
+          shakeAmount = Math.max(shakeAmount, pull);
+          if(dist < bh.userData.eventHorizon + 1.5){
+            state.shield -= (55*dt) / state.shieldMult; // 사건의 지평선 근접 시 지속 피해
+            if(state.shield <= 0){ state.shield = 0; gameOver(); }
+          }
+        }
+      }
+      // 근접도에 비례한 카메라 흔들림 — lookAt 이후 위치만 살짝 흔들어 시선방향은 유지
+      if(shakeAmount > 0){
+        const mag = shakeAmount*shakeAmount*0.9;
+        camera.position.x += (Math.random()-0.5)*mag;
+        camera.position.y += (Math.random()-0.5)*mag;
+      }
+
+      // update + collide wormholes (닿으면 다른 은하로 워프)
+      for(let i=wormholes.length-1;i>=0;i--){
+        const wh = wormholes[i];
+        const relFwd = wh.position.clone().sub(ship.position).dot(forward);
+        if(relFwd < -40){ scene.remove(wh); wormholes.splice(i,1); continue; }
+        wh.userData.ring1.rotation.z += dt*1.2;
+        wh.userData.ring2.rotation.z -= dt*1.6;
+        const d = wh.position.distanceTo(ship.position);
+        if(d < wh.userData.radius + 1.5){
+          scene.remove(wh); wormholes.splice(i,1);
+          travelThroughWormhole();
+          break; // 이번 프레임의 나머지 웜홀 처리는 다음 프레임으로 넘김(배열이 방금 갱신됐으므로 안전)
+        }
+      }
+
+      // update + collect 함선 잔해 / 폐허 정거장 (청소 대상 — 실드 피해 없음)
+      for(let i=wrecks.length-1;i>=0;i--){
+        const w = wrecks[i];
+        const cls = classifyForCulling(w.position, ship.position, forward);
+        if(cls === 'remove'){ scene.remove(w); wrecks.splice(i,1); continue; }
+        w.visible = (cls === 'active');
+        if(cls === 'active'){
+          w.rotation.x += w.userData.spin.x*dt;
+          w.rotation.y += w.userData.spin.y*dt;
+        }
+        const d = w.position.distanceTo(ship.position);
+        if(d < w.userData.radius + 1.3){
+          collectWreck(w);
+          spawnImpactSparks(w.position, 0xffb37a, 14);
+          scene.remove(w); wrecks.splice(i,1);
+        }
+      }
+
+      // update + collect 외계 조우 오브젝트 (교신 10회 누적마다 등장, 형태는 종류별로 다르다)
+      for(let i=aliens.length-1;i>=0;i--){
+        const a = aliens[i];
+        const cls = classifyForCulling(a.position, ship.position, forward);
+        if(cls === 'remove'){ scene.remove(a); aliens.splice(i,1); continue; }
+        a.visible = (cls === 'active');
+        if(cls === 'active' && typeof a.userData.tick === 'function'){
+          a.userData.tick(dt, t);
+        }
+        const d = a.position.distanceTo(ship.position);
+        if(d < a.userData.radius + 1.5){
+          collectAlien(a);
+          spawnImpactSparks(a.position, 0x8a4de3, 26);
+          scene.remove(a); aliens.splice(i,1);
+        }
+      }
+
+      // update 혜성 (표류하며 지나가는 장식 오브젝트 — 충돌 없음)
+      const cometUp = new THREE.Vector3(0,1,0);
+      for(let i=comets.length-1;i>=0;i--){
+        const cmt = comets[i];
+        const relFwd = cmt.position.clone().sub(ship.position).dot(forward);
+        if(relFwd < -260){ scene.remove(cmt); comets.splice(i,1); continue; }
+        cmt.position.addScaledVector(cmt.userData.vel, dt);
+        const tailDir = cmt.userData.vel.clone().normalize().negate();
+        cmt.userData.tail.quaternion.setFromUnitVectors(cometUp, tailDir);
+        cmt.userData.tail.position.copy(tailDir.clone().multiplyScalar(9));
+      }
+
+      // 항성 근접 판정: 가장 가까운(사거리 내) 항성 하나만 팝업으로 노출
+      {
+        let closest = null, closestDist = Infinity;
+        for(let i=stars.length-1;i>=0;i--){
+          const s = stars[i];
+          const relFwd = s.position.clone().sub(ship.position).dot(forward);
+          if(relFwd < -700){ scene.remove(s); stars.splice(i,1); continue; }
+          const d = s.position.distanceTo(ship.position);
+          if(d < s.userData.popupRadius && d < closestDist){ closest = s; closestDist = d; }
+        }
+        if(closest) showStarPopup(closest);
+        else if(nearestStar) hideStarPopup();
+      }
+
+      if(state.invuln>0) state.invuln -= dt;
+
+      // HUD update
+      scoreVal.textContent = Math.floor(state.score);
+      scrapVal.textContent = Inventory.resources.rawScrap;
+      distVal.innerHTML = Math.floor(state.distance) + '<span style="font-size:12px;color:var(--text-dim);"> LY</span>';
+      shieldBar.style.width = state.shield + '%';
+      fuelBar.style.width = state.fuel + '%';
+      shieldBar.style.background = state.shield < 30 ? 'linear-gradient(90deg,#7a1f2f,var(--danger))' : '';
+    } else {
+      // gentle idle drift on start/over screens
+      ship.rotation.y += dt*0.15;
+      camera.position.lerp(new THREE.Vector3(0,3,9), dt*2);
+      camera.lookAt(0,0.5,0);
+      updateFx(dt);
+    }
+
+    renderer.render(scene, camera);
+  }
+
+  /* ============ SCREEN FLOW ============ */
+  const startScreen = document.getElementById('startScreen');
+  const overScreen = document.getElementById('overScreen');
+  const startBtn = document.getElementById('startBtn');
+  const retryBtn = document.getElementById('retryBtn');
+
+  function beginRun(){
+    resetGame();
+    state.running = true;
+    startScreen.classList.add('hidden');
+    overScreen.classList.add('hidden');
+    hud.classList.add('visible');
+    document.getElementById('inventoryPanel').classList.add('visible');
+    homeBtn.classList.add('visible');
+    updateColonyButton();
+  }
+  startBtn.addEventListener('click', beginRun);
+  retryBtn.addEventListener('click', beginRun);
+
+  document.getElementById('bestScore').textContent = state.bestScore;
+
+  /* ---- 함선 선택 화면 ---- */
+  const shipSelectOverlay = document.getElementById('shipSelectOverlay');
+  const shipGrid = document.getElementById('shipGrid');
+
+  function renderShipGrid(){
+    shipGrid.innerHTML = '';
+    SHIP_CATALOG.forEach(def=>{
+      const card = document.createElement('div');
+      card.className = 'ship-card' + (def.id === state.shipId ? ' selected' : '');
+      card.innerHTML = `
+        <div class="swatch" style="background:#${def.colors.body.toString(16).padStart(6,'0')}22; border:1px solid #${def.colors.accent.toString(16).padStart(6,'0')};">${def.icon}</div>
+        <div class="tag">${def.tag}</div>
+        <div class="name">${def.name}</div>
+        <div class="desc">${def.desc}</div>
+        <div class="stats"><span>⚡${def.stats.speed}</span><span>↻${def.stats.turn}</span><span>🛡${def.stats.shield}</span></div>
+      `;
+      card.addEventListener('click', ()=>{
+        applyShipDesign(def.id);
+        shipGrid.querySelectorAll('.ship-card').forEach(c=>c.classList.remove('selected'));
+        card.classList.add('selected');
+      });
+      shipGrid.appendChild(card);
+    });
+  }
+  document.getElementById('shipSwapBtn').addEventListener('click', ()=>{
+    renderShipGrid();
+    shipSelectOverlay.classList.remove('hidden');
+  });
+  document.getElementById('shipSelectCloseBtn').addEventListener('click', ()=>{
+    shipSelectOverlay.classList.add('hidden');
+  });
+
+  // 초기 로드 시점: 시작 화면 뒤로 보일 배경(구역 0)과 HUD 위젯 상태를 준비
+  applyZone(0);
+  spawnSolarBodies(forwardVec, 500);
+  applyShipDesign(localStorage.getItem('voidRunnerShip') || 'interceptor');
+  updateInventoryHUD();
+  updateAdButtonUI();
+  updateColonyButton();
+
+  animate();
+})();
+</script>
+</body>
+</html>
