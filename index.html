@@ -249,6 +249,7 @@
 
   .panel{
     text-align:center; padding: 40px; max-width: 560px; width:90%;
+    max-height: 94vh; overflow-y: auto;
   }
   .kicker{
     font-size: 11px; color: var(--ion); letter-spacing: 0.4em; margin-bottom: 18px;
@@ -289,6 +290,35 @@
   .best b{ color: var(--text); }
 
   .loading-line{ font-size: 10px; color: var(--text-dim); letter-spacing:0.2em; margin-top:14px; min-height:14px; }
+
+  /* ---------- Leaderboard / Score submit (Supabase) ---------- */
+  .leaderboard-box{
+    margin: 22px auto 0; max-width: 320px; text-align:left;
+    border:1px solid var(--line); border-radius:4px; padding: 12px 16px;
+    background: rgba(11,15,30,0.5);
+  }
+  .leaderboard-title{
+    font-size: 10px; color: var(--ion); letter-spacing:0.2em; margin-bottom:8px; text-align:center;
+  }
+  .leaderboard-list{ display:flex; flex-direction:column; gap:4px; max-height:150px; overflow-y:auto; }
+  .leaderboard-row{
+    display:flex; justify-content:space-between; gap:10px; font-size:11px; color:var(--text-dim);
+  }
+  .leaderboard-row .lb-rank{ color:var(--text); width:18px; flex-shrink:0; }
+  .leaderboard-row .lb-name{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left; }
+  .leaderboard-row .lb-score{ color:var(--plasma); font-weight:700; }
+  .leaderboard-empty{ font-size:11px; color:var(--text-dim); text-align:center; padding:6px 0; }
+
+  .score-submit{
+    display:flex; gap:8px; justify-content:center; align-items:center; margin-top:16px; flex-wrap:wrap;
+  }
+  .score-submit input{
+    font-family:inherit; font-size:12px; padding:10px 12px; width:160px;
+    background:transparent; border:1px solid var(--line); color:var(--text); border-radius:2px;
+  }
+  .score-submit input:focus{ outline:none; border-color:var(--ion); }
+  .score-submit .btn{ margin-top:0; padding:10px 22px; font-size:11px; }
+  .score-submit.submitted{ opacity:0.5; pointer-events:none; }
 
   @media (max-width: 640px){
     .stat-block{ min-width: 110px; padding: 6px 10px; }
@@ -380,6 +410,10 @@
         <button class="btn" id="shipSwapBtn" style="border-color:var(--ion); color:var(--ion); padding:10px 30px; font-size:11px;">🚀 함선 교체: <span id="currentShipLabel">-</span></button>
       </div>
       <div class="loading-line" id="loadingLine"></div>
+      <div class="leaderboard-box">
+        <div class="leaderboard-title">🏆 글로벌 리더보드 TOP 10</div>
+        <div class="leaderboard-list" id="leaderboardListStart"><div class="leaderboard-empty">불러오는 중...</div></div>
+      </div>
     </div>
   </div>
 
@@ -413,15 +447,32 @@
       <div class="final-label">최종 점수</div>
       <div class="final-score" id="finalScore">0</div>
       <div class="best">최고 기록 <b id="bestScore">0</b></div>
+      <div class="score-submit" id="scoreSubmit">
+        <input type="text" id="playerNameInput" maxlength="20" placeholder="이름 (랭킹 등록)">
+        <button class="btn" id="submitScoreBtn">기록 등록</button>
+      </div>
+      <div class="leaderboard-box">
+        <div class="leaderboard-title">🏆 글로벌 리더보드 TOP 10</div>
+        <div class="leaderboard-list" id="leaderboardListOver"><div class="leaderboard-empty">불러오는 중...</div></div>
+      </div>
       <button class="btn" id="retryBtn" style="margin-top:26px;">재도전</button>
     </div>
   </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 (function(){
   "use strict";
+
+  /* ============ SUPABASE ============
+     클라우드 세이브(기기별 익명 계정) + 글로벌 리더보드.
+     테이블/RLS는 supabase/schema.sql 을 Supabase SQL Editor에서 먼저 실행해야 하고,
+     Authentication > Sign In / Providers 에서 Anonymous Sign-Ins 를 켜야 클라우드 세이브가 동작한다. */
+  const SUPABASE_URL = 'https://bojbghdfdwkvseqyandf.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_HN1ovY2VZcsQgdTaGQ8Hag_DDJpNl0C';
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   /* ============ SETUP ============ */
   const canvas = document.getElementById('scene');
@@ -1046,6 +1097,7 @@
     localStorage.setItem('voidRunnerShip', def.id);
     const label = document.getElementById('currentShipLabel');
     if(label) label.textContent = def.name;
+    queueCloudSync();
   }
 
   /* ============ OBSTACLE / COLLECTIBLE FIELDS ============ */
@@ -1487,6 +1539,7 @@
 
     _onChange(){
       if(typeof updateInventoryHUD === 'function') updateInventoryHUD();
+      queueCloudSync();
     }
   };
 
@@ -1600,6 +1653,7 @@
   }
   function saveColonies(){
     localStorage.setItem('voidRunnerColonies', JSON.stringify(state.colonies));
+    queueCloudSync();
   }
 
   function showStarPopup(starMesh){
@@ -1720,6 +1774,7 @@
   function replyToAlien(){
     state.contactCount += 1;
     localStorage.setItem(CONTACT_KEY, String(state.contactCount));
+    queueCloudSync();
     closeAlienComm();
     if(state.contactCount >= state.nextEncounterAt){
       triggerAlienEncounter();
@@ -1906,10 +1961,12 @@
 
   function gameOver(){
     state.running = false;
-    document.getElementById('finalScore').textContent = Math.floor(state.score);
+    const finalScore = Math.floor(state.score);
+    document.getElementById('finalScore').textContent = finalScore;
     if(state.score > state.bestScore){
-      state.bestScore = Math.floor(state.score);
+      state.bestScore = finalScore;
       localStorage.setItem('voidRunnerBest', String(state.bestScore));
+      queueCloudSync();
     }
     document.getElementById('bestScore').textContent = state.bestScore;
     document.getElementById('overScreen').classList.remove('hidden');
@@ -1917,6 +1974,8 @@
     homeBtn.classList.remove('visible');
     closeAlienComm();
     hideStarPopup();
+    prepareScoreSubmit(finalScore);
+    loadLeaderboard(document.getElementById('leaderboardListOver'));
   }
 
   /* ============ MAIN LOOP ============ */
@@ -2287,6 +2346,165 @@
     shipSelectOverlay.classList.add('hidden');
   });
 
+  /* ============================================================
+     클라우드 세이브 (Supabase Anonymous Auth + cloud_saves 테이블)
+     기기별 익명 계정으로 로그인해 최고점수/식민지/함선/자원을 동기화한다.
+     ============================================================ */
+  let cloudUserId = null;
+  let cloudSyncTimer = null;
+  let cloudSyncInFlight = false;
+
+  function buildCloudSavePayload(){
+    return {
+      user_id: cloudUserId,
+      ship_id: state.shipId,
+      best_score: state.bestScore,
+      contact_count: state.contactCount,
+      colonies: state.colonies,
+      resources: Inventory.resources,
+      updated_at: new Date().toISOString()
+    };
+  }
+
+  function queueCloudSync(){
+    if(!cloudUserId) return;
+    clearTimeout(cloudSyncTimer);
+    cloudSyncTimer = setTimeout(pushCloudSave, 300);
+  }
+
+  async function pushCloudSave(){
+    if(!cloudUserId || cloudSyncInFlight) return;
+    cloudSyncInFlight = true;
+    try{
+      const { error } = await supabaseClient.from('cloud_saves').upsert(buildCloudSavePayload());
+      if(error) throw error;
+    }catch(err){
+      console.warn('클라우드 세이브 저장 실패 (supabase/schema.sql 적용 여부를 확인하세요):', err);
+    }finally{
+      cloudSyncInFlight = false;
+    }
+  }
+
+  function applyCloudSave(row){
+    state.bestScore = row.best_score || 0;
+    localStorage.setItem('voidRunnerBest', String(state.bestScore));
+    state.contactCount = row.contact_count || 0;
+    localStorage.setItem(CONTACT_KEY, String(state.contactCount));
+    state.nextEncounterAt = (Math.floor(state.contactCount/10)+1)*10;
+    state.colonies = Array.isArray(row.colonies) ? row.colonies : [];
+    localStorage.setItem('voidRunnerColonies', JSON.stringify(state.colonies));
+    if(row.resources && typeof row.resources === 'object'){
+      Inventory.resources.rawScrap = row.resources.rawScrap || 0;
+      Inventory.resources.refinedAlloy = row.resources.refinedAlloy || 0;
+      Inventory.resources.dataCore = row.resources.dataCore || 0;
+      updateInventoryHUD();
+    }
+    if(row.ship_id && row.ship_id !== state.shipId){
+      applyShipDesign(row.ship_id);
+    }
+    document.getElementById('bestScore').textContent = state.bestScore;
+    updateColonyButton();
+  }
+
+  async function syncFromCloud(){
+    try{
+      const { data, error } = await supabaseClient
+        .from('cloud_saves')
+        .select('*')
+        .eq('user_id', cloudUserId)
+        .maybeSingle();
+      if(error) throw error;
+      if(data){
+        applyCloudSave(data);
+      } else {
+        await pushCloudSave();
+      }
+    }catch(err){
+      console.warn('클라우드 세이브 불러오기 실패 (supabase/schema.sql 적용 여부를 확인하세요):', err);
+    }
+  }
+
+  async function initCloudSave(){
+    try{
+      const { data: sessionData } = await supabaseClient.auth.getSession();
+      let user = sessionData && sessionData.session ? sessionData.session.user : null;
+      if(!user){
+        const { data, error } = await supabaseClient.auth.signInAnonymously();
+        if(error) throw error;
+        user = data.user;
+      }
+      cloudUserId = user.id;
+      await syncFromCloud();
+    }catch(err){
+      console.warn('Supabase 익명 로그인 실패 (Dashboard에서 Anonymous Sign-Ins를 활성화하세요):', err);
+    }
+  }
+
+  /* ============================================================
+     글로벌 리더보드 (Supabase leaderboard 테이블)
+     ============================================================ */
+  function escapeHtml(str){
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+  function renderLeaderboardRows(container, rows){
+    if(!rows || rows.length === 0){
+      container.innerHTML = '<div class="leaderboard-empty">아직 기록이 없습니다. 첫 기록의 주인공이 되어보세요!</div>';
+      return;
+    }
+    container.innerHTML = rows.map((r,i)=> `
+      <div class="leaderboard-row">
+        <span class="lb-rank">${i+1}</span>
+        <span class="lb-name">${escapeHtml(r.player_name)}</span>
+        <span class="lb-score">${r.score}</span>
+      </div>`).join('');
+  }
+  async function loadLeaderboard(container){
+    if(!container) return;
+    try{
+      const { data, error } = await supabaseClient
+        .from('leaderboard')
+        .select('player_name,score')
+        .order('score', { ascending:false })
+        .limit(10);
+      if(error) throw error;
+      renderLeaderboardRows(container, data);
+    }catch(err){
+      container.innerHTML = '<div class="leaderboard-empty">리더보드를 불러올 수 없습니다.</div>';
+      console.warn('리더보드 로드 실패 (supabase/schema.sql 적용 여부를 확인하세요):', err);
+    }
+  }
+
+  function prepareScoreSubmit(finalScore){
+    const wrap = document.getElementById('scoreSubmit');
+    const input = document.getElementById('playerNameInput');
+    wrap.classList.remove('submitted');
+    wrap.style.display = finalScore > 0 ? 'flex' : 'none';
+    input.value = localStorage.getItem('voidRunnerPlayerName') || '';
+    wrap.dataset.score = String(finalScore);
+  }
+
+  document.getElementById('submitScoreBtn').addEventListener('click', async ()=>{
+    const wrap = document.getElementById('scoreSubmit');
+    const input = document.getElementById('playerNameInput');
+    const name = input.value.trim().slice(0,20);
+    const score = parseInt(wrap.dataset.score || '0', 10);
+    if(!name){ showToast('이름을 입력해주세요'); return; }
+    localStorage.setItem('voidRunnerPlayerName', name);
+    wrap.classList.add('submitted');
+    try{
+      const { error } = await supabaseClient.from('leaderboard').insert({ player_name:name, score });
+      if(error) throw error;
+      showToast('리더보드에 기록되었습니다');
+      loadLeaderboard(document.getElementById('leaderboardListOver'));
+    }catch(err){
+      wrap.classList.remove('submitted');
+      showToast('기록 등록 실패');
+      console.warn('리더보드 등록 실패 (supabase/schema.sql 적용 여부를 확인하세요):', err);
+    }
+  });
+
   // 초기 로드 시점: 시작 화면 뒤로 보일 배경(구역 0)과 HUD 위젯 상태를 준비
   applyZone(0);
   spawnSolarBodies(forwardVec, 500);
@@ -2294,6 +2512,8 @@
   updateInventoryHUD();
   updateAdButtonUI();
   updateColonyButton();
+  initCloudSave();
+  loadLeaderboard(document.getElementById('leaderboardListStart'));
 
   animate();
 })();

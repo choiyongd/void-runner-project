@@ -24,5 +24,15 @@ Three.js 기반 3D 우주 탐사/러너 게임. 순수 HTML/CSS/JS 단일 파일
 - 데이터 조각을 모아 여는 스토리/로그 아카이브 시스템
 - 외계 종족별 개별 호감도 트래킹
 
+## Supabase 연동 (글로벌 리더보드 + 클라우드 세이브)
+`index.html`에 Supabase 프로젝트가 연결되어 있습니다. 최초 1회 아래 설정이 필요합니다.
+
+1. Supabase Dashboard → SQL Editor에서 [`supabase/schema.sql`](supabase/schema.sql) 내용을 실행해 `leaderboard`, `cloud_saves` 테이블과 RLS 정책을 생성합니다.
+2. Dashboard → Authentication → Sign In / Providers에서 **Anonymous Sign-Ins**를 활성화합니다. (클라우드 세이브는 기기별 익명 계정으로 동작하며, 이 설정이 꺼져 있으면 리더보드는 정상 동작하지만 클라우드 세이브는 콘솔 경고와 함께 조용히 비활성화됩니다.)
+
+연동 후:
+- 게임오버 화면에서 이름을 입력하고 "기록 등록"을 누르면 `leaderboard`에 점수가 저장되고, 시작 화면과 게임오버 화면에 TOP 10이 표시됩니다.
+- 최고점수·식민지·함선 선택·자원(고철/합금/데이터 조각)은 `cloud_saves`에 자동 저장되어 같은 브라우저에서 재접속해도 유지됩니다.
+
 ## 배포
 정적 파일이므로 GitHub Pages, Vercel, Netlify 등 어디에든 그대로 올릴 수 있습니다.
