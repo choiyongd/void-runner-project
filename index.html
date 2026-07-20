@@ -462,6 +462,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
 <script>
 (function(){
   "use strict";
@@ -470,8 +471,7 @@
      클라우드 세이브(기기별 익명 계정) + 글로벌 리더보드.
      테이블/RLS는 supabase/schema.sql 을 Supabase SQL Editor에서 먼저 실행해야 하고,
      Authentication > Sign In / Providers 에서 Anonymous Sign-Ins 를 켜야 클라우드 세이브가 동작한다. */
-  const SUPABASE_URL = 'https://bojbghdfdwkvseqyandf.supabase.co';
-  const SUPABASE_ANON_KEY = 'sb_publishable_HN1ovY2VZcsQgdTaGQ8Hag_DDJpNl0C';
+  const { SUPABASE_URL, SUPABASE_ANON_KEY } = window.VOID_RUNNER_CONFIG;
   const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   /* ============ SETUP ============ */
